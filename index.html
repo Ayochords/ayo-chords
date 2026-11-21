@@ -234,10 +234,23 @@ $('songImage').onchange=e=>{
   img.onerror=()=>toast('เปิดรูปภาพนี้ไม่ได้ ลองใช้ JPG หรือ PNG');
   img.onload=()=>{
    try{
-    const max=1800,scale=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
-    const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
-    const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);
-    pendingImage=canvas.toDataURL('image/jpeg',.82);$('preview').src=pendingImage;$('previewWrap').classList.remove('hidden');toast('เตรียมรูปภาพเรียบร้อย');
+    let scale=Math.min(1,1800/Math.max(img.naturalWidth,img.naturalHeight));
+    const canvas=document.createElement('canvas');const ctx=canvas.getContext('2d');
+    let data='';
+    // Keep the embedded image comfortably below Firestore's 1 MiB document limit.
+    for(let pass=0;pass<8;pass++){
+      canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+      canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+      ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      for(let quality=.78;quality>=.42;quality-=.08){
+        data=canvas.toDataURL('image/jpeg',quality);
+        if(data.length<700000)break;
+      }
+      if(data.length<700000)break;
+      scale*=.82;
+    }
+    if(!data||data.length>=700000){toast('รูปมีขนาดใหญ่เกินไป กรุณาเลือกรูปที่เล็กลง');return}
+    pendingImage=data;$('preview').src=pendingImage;$('previewWrap').classList.remove('hidden');toast('เตรียมรูปภาพเรียบร้อย');
    }catch(err){pendingImage=reader.result;$('preview').src=pendingImage;$('previewWrap').classList.remove('hidden');toast('เตรียมรูปภาพแล้ว');}
   };img.src=reader.result;
  };reader.readAsDataURL(f);
@@ -314,12 +327,12 @@ songs=read('ayo_songs',[]);sets=read('ayo_sets',[]);renderSongs();renderSets();
  $("logoutBtn").onclick=()=>{if(auth&&confirm("ต้องการออกจากระบบ Ayo Chords หรือไม่?"))auth.signOut().catch(error);};
  function stopCloudListeners(){[stopPublic,stopSets,stopSearch].forEach(fn=>{try{if(fn)fn()}catch(e){}});stopPublic=stopSets=stopSearch=null;}
  const cloudError=e=>{console.error('AYO Firestore:',e);toast('ซิงค์คลาวด์ไม่สำเร็จ: '+(e.code||e.message||'unknown'));};
- async function saveCloudSong(song){if(!db||!auth.currentUser)return;const uid=auth.currentUser.uid;const ref=db.collection('public_songs').doc(String(song.id));const clean={title:String(song.title||''),artist:String(song.artist||''),owner_uid:uid};try{const snap=await ref.get();if(!snap.exists){clean.created_at=firebase.firestore.FieldValue.serverTimestamp();await ref.set(clean);song.owner_uid=uid;}else if(snap.data().owner_uid===uid){clean.updated_at=firebase.firestore.FieldValue.serverTimestamp();await ref.set(clean,{merge:true});song.owner_uid=uid;}else{song.owner_uid=snap.data().owner_uid;toast('เพลงนี้เป็นของผู้ใช้อื่น จึงแก้ไขไม่ได้');}localStorage.setItem('ayo_songs',JSON.stringify(songs));}catch(e){cloudError(e)}}
+ async function saveCloudSong(song){if(!db||!auth.currentUser)return;const uid=auth.currentUser.uid;const ref=db.collection('public_songs').doc(String(song.id));const clean={title:String(song.title||''),artist:String(song.artist||''),owner_uid:uid};if(song.image)clean.image=String(song.image);try{const snap=await ref.get();if(!snap.exists){clean.created_at=firebase.firestore.FieldValue.serverTimestamp();await ref.set(clean);song.owner_uid=uid;}else if(snap.data().owner_uid===uid){clean.updated_at=firebase.firestore.FieldValue.serverTimestamp();await ref.set(clean,{merge:true});song.owner_uid=uid;}else{song.owner_uid=snap.data().owner_uid;toast('เพลงนี้เป็นของผู้ใช้อื่น จึงแก้ไขไม่ได้');}localStorage.setItem('ayo_songs',JSON.stringify(songs));}catch(e){cloudError(e)}}
  async function deleteCloudSong(id){if(!db||!auth.currentUser)return;try{const ref=db.collection('public_songs').doc(String(id));const snap=await ref.get();if(snap.exists&&snap.data().owner_uid===auth.currentUser.uid)await ref.delete();}catch(e){cloudError(e)}}
  async function saveCloudSets(){if(!db||!auth.currentUser||syncBusy)return;const uid=auth.currentUser.uid;syncBusy=true;try{const col=db.collection('users').doc(uid).collection('setlists');const snap=await col.get();const keep=new Set(sets.map(st=>String(st.id)));const batch=db.batch();snap.docs.forEach(d=>{if(!keep.has(d.id))batch.delete(d.ref)});sets.forEach(st=>batch.set(col.doc(String(st.id)),{name:String(st.name||''),ids:Array.isArray(st.ids)?st.ids:[],updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}));if(!snap.empty||sets.length)await batch.commit();}catch(e){cloudError(e)}finally{syncBusy=false}}
  async function saveCloudSearch(counts){if(!db||!auth.currentUser)return;try{await db.collection('users').doc(auth.currentUser.uid).collection('private').doc('search_history').set({counts:counts,updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})}catch(e){cloudError(e)}}
  function startCloud(user){stopCloudListeners();window.ayoCurrentUid=user.uid;
-  stopPublic=db.collection('public_songs').onSnapshot(async snap=>{const remote=snap.docs.map(d=>{const x=d.data();return{id:d.id,title:x.title||'',artist:x.artist||'',owner_uid:x.owner_uid||'',createdAt:x.created_at&&x.created_at.toMillis?x.created_at.toMillis():0}});const remoteIds=new Set(remote.map(x=>x.id));const localById=new Map(songs.map(x=>[String(x.id),x]));songs=remote.map(x=>({...x,image:localById.get(x.id)?.image||null}));for(const local of localById.values()){if(!remoteIds.has(String(local.id))){songs.push(local);saveCloudSong(local)}}try{localStorage.setItem('ayo_songs',JSON.stringify(songs))}catch(e){}renderSongs();renderSets();},cloudError);
+  stopPublic=db.collection('public_songs').onSnapshot(async snap=>{const remote=snap.docs.map(d=>{const x=d.data();return{id:d.id,title:x.title||'',artist:x.artist||'',owner_uid:x.owner_uid||'',image:x.image||null,createdAt:x.created_at&&x.created_at.toMillis?x.created_at.toMillis():0}});const remoteIds=new Set(remote.map(x=>x.id));const localById=new Map(songs.map(x=>[String(x.id),x]));songs=remote.map(x=>({...x,image:x.image||localById.get(x.id)?.image||null}));for(const remoteSong of remote){const local=localById.get(remoteSong.id);if(!remoteSong.image&&local&&local.image&&remoteSong.owner_uid===user.uid){saveCloudSong({...remoteSong,image:local.image});}}for(const local of localById.values()){if(!remoteIds.has(String(local.id))){songs.push(local);saveCloudSong(local)}}try{localStorage.setItem('ayo_songs',JSON.stringify(songs))}catch(e){}renderSongs();renderSets();},cloudError);
   const setsRef=db.collection('users').doc(user.uid).collection('setlists');stopSets=setsRef.onSnapshot(snap=>{if(!snap.empty){sets=snap.docs.map(d=>({id:d.id,name:d.data().name||'Setlist',ids:Array.isArray(d.data().ids)?d.data().ids:[]}));localStorage.setItem('ayo_sets',JSON.stringify(sets));renderSets()}else if(sets.length){saveCloudSets()}},cloudError);
   stopSearch=db.collection('users').doc(user.uid).collection('private').doc('search_history').onSnapshot(doc=>{if(doc.exists&&doc.data().counts){searchCounts=doc.data().counts;localStorage.setItem('ayo_search_counts',JSON.stringify(searchCounts));renderFrequentSongs()}else if(Object.keys(searchCounts).length){saveCloudSearch(searchCounts)}},cloudError);
  }
