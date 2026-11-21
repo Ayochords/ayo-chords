@@ -1,0 +1,43 @@
+name: AYO CHORD Preview
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - codex/ayo-chord-review-2026-11-21
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview-package:
+    name: Build downloadable preview
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out preview branch
+        uses: actions/checkout@v4
+
+      - name: Verify app entry point
+        run: |
+          test -f index.html
+          test -f manifest.webmanifest
+          test -f service-worker.js
+
+      - name: Package preview site
+        run: |
+          mkdir -p preview
+          cp -R index.html manifest.webmanifest service-worker.js preview/
+          if [ -d icons ]; then cp -R icons preview/icons; fi
+          cd preview
+          zip -r ../ayo-chord-preview.zip .
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayo-chord-preview
+          path: ayo-chord-preview.zip
+          if-no-files-found: error
+          retention-days: 7
