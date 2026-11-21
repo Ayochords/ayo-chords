@@ -1,3 +1,5 @@
+AYO CHORDS V7 — Firebase Authentication
+
 AYO CHORDS V6 UPDATE — Setlist & Random Drawer
 
 ไฟล์นี้เป็นเว็บแอป (PWA) ไม่ใช่ไฟล์ติดตั้ง .ipa หรือ APK
@@ -20,3 +22,12 @@ AYO CHORDS V6 UPDATE — Setlist & Random Drawer
 - เปลี่ยนชื่อแคช Service Worker เป็น v2 เพื่อให้ Safari ดึงไฟล์ใหม่
 - เวอร์ชันนี้ยังไม่ได้ทดสอบบน iPhone จริง และไม่รับประกันว่าจะนำข้อมูล V5 มาให้เอง
 - ก่อนเปลี่ยนเวอร์ชัน ควรสำรองเพลงและรูปคอร์ดก่อน
+
+V7 AUTHENTICATION:
+- Login screen appears before the song library.
+- Google and Facebook sign-in buttons are implemented.
+- Email/password registration, login, and password reset are implemented.
+- Firebase Auth local persistence is enabled.
+- Facebook requires enabling the provider in Firebase Authentication and configuring Meta App ID/Secret plus OAuth redirect URL.
+- Google requires the provider enabled and the deployed domain authorized in Firebase Authentication.
+- Existing ayo_songs and ayo_sets localStorage keys are preserved; this build does not migrate data to Firestore or sync across devices.

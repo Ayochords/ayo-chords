@@ -40,6 +40,31 @@ header,main{position:relative;z-index:1}
 .set-song-title{flex:1;min-width:0;text-align:left;background:transparent!important;color:var(--cream)!important;padding:10px 4px!important;font-size:16px!important;font-weight:600;border:0!important;border-radius:8px!important}
 .set-song-title:active{background:var(--panel2)!important}
 .set-song-title:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+/* AYO CHORDS V7 — authentication gate */
+body.auth-locked>header,body.auth-locked>main,body.auth-locked>#player,body.auth-locked>#toast{display:none!important}
+#authGate{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:22px 16px;background:radial-gradient(ellipse at top,#26382c 0%,#101712 55%,#090d0b 100%);overflow:auto}
+#authGate.hidden{display:none!important}
+.auth-card{width:min(100%,430px);background:#171f1a;border:1px solid #405044;border-radius:24px;padding:26px 22px;box-shadow:0 22px 70px #0009}
+.auth-logo{text-align:center;color:#d7b66b;font-weight:900;letter-spacing:4px;font-size:28px;margin:4px 0}
+.auth-sub{text-align:center;color:#a9b3aa;font-size:11px;letter-spacing:2px;margin-bottom:24px}
+.auth-title{text-align:center;font-size:20px;font-weight:800;margin:0 0 5px}
+.auth-note{text-align:center;color:#a9b3aa;font-size:13px;margin-bottom:18px}
+.auth-field{width:100%;margin:6px 0 12px;padding:14px;border-radius:12px;border:1px solid #405044;background:#0e1511;color:#f4efdf}
+.auth-btn{width:100%;margin:6px 0;padding:14px;border-radius:12px;font-weight:750}
+.auth-google{background:#fff;color:#202124}
+.auth-facebook{background:#1877f2;color:#fff}
+.auth-email{background:#d7b66b;color:#17150e}
+.auth-divider{display:flex;align-items:center;gap:10px;color:#a9b3aa;font-size:11px;margin:12px 0}
+.auth-divider:before,.auth-divider:after{content:"";height:1px;background:#344239;flex:1}
+.auth-switch{display:flex;gap:8px;margin:0 0 12px}
+.auth-switch button{flex:1;background:#202a23;color:#a9b3aa;border:1px solid #344239}
+.auth-switch button.active{background:#d7b66b;color:#17150e}
+.auth-small{text-align:center;color:#a9b3aa;font-size:12px;margin:12px 0 0}
+.auth-link{background:none;color:#d7b66b;padding:4px;text-decoration:underline}
+#authMessage{min-height:18px;color:#ffd2a8;font-size:12px;text-align:center;margin-top:8px}
+#logoutBtn{background:#26352b;color:#f4efdf;border:1px solid #405044;padding:8px 11px;font-size:12px}
+
 </style>
 
 <link rel="manifest" href="./manifest.webmanifest">
@@ -51,8 +76,25 @@ header,main{position:relative;z-index:1}
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 
 </head>
-<body>
-<header><div><div class="brand">AYO CHORDS</div><div class="sub">LIVE MUSIC COMPANION</div></div><div class="small" id="count">0 SONGS</div></header>
+<body class="auth-locked">
+
+<div id="authGate"><div class="auth-card">
+  <div class="auth-logo">AYO CHORDS</div><div class="auth-sub">LIVE MUSIC COMPANION</div>
+  <h1 class="auth-title" id="authHeading">WELCOME BACK</h1>
+  <p class="auth-note" id="authDescription">เข้าสู่ระบบเพื่อเปิดคลังเพลงและ Setlist</p>
+  <button class="auth-btn auth-google" id="googleLogin">Continue with Google</button>
+  <button class="auth-btn auth-facebook" id="facebookLogin">Continue with Facebook</button>
+  <div class="auth-divider">หรือใช้อีเมล</div>
+  <div class="auth-switch"><button type="button" class="active" id="showLogin">เข้าสู่ระบบ</button><button type="button" id="showRegister">สมัครสมาชิก</button></div>
+  <input class="auth-field" id="authEmail" type="email" autocomplete="email" placeholder="Email address">
+  <input class="auth-field" id="authPassword" type="password" autocomplete="current-password" placeholder="Password (อย่างน้อย 6 ตัวอักษร)">
+  <button class="auth-btn auth-email" id="emailSubmit">LOGIN</button>
+  <button class="auth-link" id="forgotPassword" type="button">ลืมรหัสผ่าน?</button>
+  <div id="authMessage" role="status" aria-live="polite"></div>
+  <p class="auth-small">เมื่อเข้าสู่ระบบแล้ว แอปจะจำสถานะไว้จนกว่าจะกดออกจากระบบ</p>
+</div></div>
+
+<header><div><div class="brand">AYO CHORDS</div><div class="sub">LIVE MUSIC COMPANION</div></div><div class="row" style="align-items:center;gap:8px;flex:0 0 auto"><div class="small" id="count">0 SONGS</div><button id="logoutBtn" type="button">ออกจากระบบ</button></div></header>
 <main>
   <div class="tabs">
     <button class="tab active" data-tab="library">คลังเพลง</button>
@@ -101,6 +143,8 @@ header,main{position:relative;z-index:1}
   </div>
 </div>
 <div id="toast"></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const read=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
@@ -252,6 +296,23 @@ function renderSets(){
 function playSet(st,startAt){const queue=st.ids.map(id=>songs.find(x=>x.id===id)).filter(Boolean);if(!queue.length){toast('Setlist นี้ยังไม่มีเพลง');return}playbackQueue=queue;currentIndex=Math.max(0,Math.min(startAt,queue.length-1));resetZoom();renderPlayer();$('player').classList.remove('hidden');showControls(false);}
 $('player').addEventListener('click',e=>{if(e.target.id==='closePlayer'){}});
 songs=read('ayo_songs',[]);sets=read('ayo_sets',[]);renderSongs();renderSets();
+</script>
+
+<script>
+(() => {
+ const firebaseConfig={apiKey:"AIzaSyBzm6iqp30mqQP5hbF-bnd9kl2Yt974M8k",authDomain:"ayo-chords.firebaseapp.com",projectId:"ayo-chords",storageBucket:"ayo-chords.firebasestorage.app",messagingSenderId:"868391072699",appId:"1:868391072699:web:e6eb2fa600a68ca167ca9e",measurementId:"G-RMXDPB830K"};
+ const $=id=>document.getElementById(id), gate=$("authGate"), msg=$("authMessage"); let auth=null, mode="login";
+ const say=s=>msg.textContent=s||"";
+ const setMode=m=>{mode=m;$("showLogin").classList.toggle("active",m==="login");$("showRegister").classList.toggle("active",m==="register");$("authHeading").textContent=m==="login"?"WELCOME BACK":"CREATE ACCOUNT";$("authDescription").textContent=m==="login"?"เข้าสู่ระบบเพื่อเปิดคลังเพลงและ Setlist":"สร้างบัญชีเพื่อใช้งาน Ayo Chords";$("emailSubmit").textContent=m==="login"?"LOGIN":"CREATE ACCOUNT";$("authPassword").autocomplete=m==="login"?"current-password":"new-password";say("");};
+ const error=e=>{const map={"auth/invalid-email":"รูปแบบอีเมลไม่ถูกต้อง","auth/user-not-found":"ไม่พบบัญชีนี้","auth/wrong-password":"รหัสผ่านไม่ถูกต้อง","auth/invalid-credential":"อีเมลหรือรหัสผ่านไม่ถูกต้อง","auth/email-already-in-use":"อีเมลนี้มีบัญชีอยู่แล้ว","auth/weak-password":"รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร","auth/popup-closed-by-user":"ปิดหน้าต่างเข้าสู่ระบบก่อนดำเนินการเสร็จ","auth/unauthorized-domain":"โดเมนเว็บไซต์นี้ยังไม่ได้รับอนุญาตใน Firebase","auth/operation-not-allowed":"ยังไม่ได้เปิดวิธีเข้าสู่ระบบนี้ใน Firebase","auth/account-exists-with-different-credential":"อีเมลนี้ผูกกับวิธีเข้าสู่ระบบอื่นอยู่แล้ว"};say(map[e.code]||("เข้าสู่ระบบไม่สำเร็จ: "+(e.message||"โปรดลองอีกครั้ง")));};
+ const emailAction=()=>{const email=$("authEmail").value.trim(), password=$("authPassword").value;if(!email||!password){say("กรุณากรอกอีเมลและรหัสผ่าน");return;}say("กำลังดำเนินการ...");(mode==="login"?auth.signInWithEmailAndPassword(email,password):auth.createUserWithEmailAndPassword(email,password)).catch(error);};
+ $("showLogin").onclick=()=>setMode("login");$("showRegister").onclick=()=>setMode("register");$("emailSubmit").onclick=emailAction;$("authPassword").addEventListener("keydown",e=>{if(e.key==="Enter")emailAction();});
+ $("forgotPassword").onclick=()=>{const email=$("authEmail").value.trim();if(!email){say("กรอกอีเมลก่อน แล้วกดลืมรหัสผ่านอีกครั้ง");return;}auth.sendPasswordResetEmail(email).then(()=>say("ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่อีเมลแล้ว")).catch(error);};
+ $("googleLogin").onclick=()=>{say("กำลังเปิด Google Login...");auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(error);};
+ $("facebookLogin").onclick=()=>{say("กำลังเปิด Facebook Login...");auth.signInWithPopup(new firebase.auth.FacebookAuthProvider()).catch(error);};
+ $("logoutBtn").onclick=()=>{if(auth&&confirm("ต้องการออกจากระบบ Ayo Chords หรือไม่?"))auth.signOut().catch(error);};
+ try{if(!window.firebase)throw new Error("โหลด Firebase SDK ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต");if(!firebase.apps.length)firebase.initializeApp(firebaseConfig);auth=firebase.auth();auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).then(()=>auth.onAuthStateChanged(user=>{if(user){document.body.classList.remove("auth-locked");gate.classList.add("hidden");$("logoutBtn").style.display="inline-block";}else{document.body.classList.add("auth-locked");gate.classList.remove("hidden");$("logoutBtn").style.display="none";}})).catch(e=>say("ตั้งค่าการเข้าสู่ระบบไม่สำเร็จ: "+e.message));}catch(e){say(e.message);}
+})();
 </script>
 
 <script>
