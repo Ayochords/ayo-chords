@@ -1,0 +1,74 @@
+name: AYO CHORD Preview
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+      - codex/ayo-chord-review-2026-11-21
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ayo-chord-preview-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  preview-package:
+    name: Build HTTPS preview and downloadable package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out preview branch
+        uses: actions/checkout@v4
+
+      - name: Verify app entry point
+        run: |
+          test -f index.html
+          test -f manifest.webmanifest
+          test -f service-worker.js
+
+      - name: Package preview site
+        run: |
+          mkdir -p preview
+          cp -R index.html manifest.webmanifest service-worker.js preview/
+          if [ -d icons ]; then cp -R icons preview/icons; fi
+          cd preview
+          zip -r ../ayo-chord-preview.zip .
+
+      - name: Upload downloadable preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayo-chord-preview
+          path: ayo-chord-preview.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      - name: Upload HTTPS site artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: preview
+
+  deploy-preview:
+    # Deploy only from main. Preview branches and pull requests build artifacts
+    # without attempting a protected GitHub Pages deployment.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: preview-package
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish HTTPS preview
+        id: deployment
+        uses: actions/deploy-pages@v4
