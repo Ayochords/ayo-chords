@@ -56,3 +56,11 @@ service cloud.firestore {
 6. ทดสอบเพิ่มเพลงใหม่ แล้วตรวจ Firestore > Data > public_songs ว่ามีเอกสารพร้อม created_at แบบ Timestamp หรือไม่
 
 หมายเหตุ: หากหน้าแอปแจ้ง permission-denied ให้ตรวจว่า Firestore Rules ชุดข้างบนถูก Publish แล้วจริงหรือไม่
+
+
+การปรับปรุง V7 (แก้ปัญหาพื้นที่เก็บข้อมูลในเครื่อง):
+- ย้ายแคชรูปคอร์ดในเครื่องจาก localStorage ไป IndexedDB เพื่อลดปัญหา quota ของ localStorage
+- localStorage เก็บเฉพาะข้อมูลข้อความ/metadata ของเพลง ไม่เก็บ Base64 รูปภาพซ้ำ
+- รูปภาพยังบันทึกบน Cloud Firestore ตามระบบเดิม และเก็บสำเนาใน IndexedDB เพื่อเปิดใช้งานบนเครื่องเดิมแบบออฟไลน์
+- เพิ่มการกู้คืนแคชรูปจาก IndexedDB เมื่อเปิดแอปใหม่
+- Service Worker cache เปลี่ยนเป็น v13 เพื่อให้โหลดโค้ดชุดใหม่
