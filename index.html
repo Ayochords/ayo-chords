@@ -129,6 +129,12 @@ body.auth-locked>header,body.auth-locked>main,body.auth-locked>#player,body.auth
       <hr><div id="uploadStatus" class="panel hidden" role="status" aria-live="polite" style="margin:10px 0;padding:12px"><div id="uploadStatusText">กำลังเตรียมข้อมูล…</div><div style="height:7px;background:#344239;border-radius:8px;overflow:hidden;margin-top:9px"><div id="uploadProgress" style="height:100%;width:0;background:#d7b66b;border-radius:8px;transition:width .25s"></div></div><div id="uploadStatusHint" class="small" style="margin-top:7px">กรุณาอย่าปิดแอประหว่างบันทึก</div></div><div class="actions"><button id="saveSong">บันทึกเพลง</button><button class="secondary" id="clearForm">ล้าง</button></div>
       <input id="editId" type="hidden">
     </div>
+    <div class="panel" style="margin-top:14px">
+      <h2>สำรองข้อมูลเพลง</h2>
+      <p class="small">ดาวน์โหลดคลังเพลง รูปคอร์ด และ Setlist เก็บไว้ในไฟล์เดียว เพื่อป้องกันข้อมูลสูญหาย</p>
+      <button id="exportBackup" type="button" class="secondary">ดาวน์โหลดไฟล์สำรองข้อมูล</button>
+      <div id="backupStatus" class="small" role="status" aria-live="polite" style="margin-top:8px"></div>
+    </div>
   </section>
   
 </main>
@@ -225,6 +231,24 @@ $('voiceSearch').onclick=()=>{
  try{recognition.start();}catch(e){voiceMessage('เริ่มไมโครโฟนไม่ได้','ลองแตะอีกครั้ง หรือใช้ไมโครโฟนบนคีย์บอร์ด iPhone','error');}
 };
 
+async function exportBackup(){
+ const button=$('exportBackup'),status=$('backupStatus');
+ if(button.disabled)return;
+ button.disabled=true;status.textContent='กำลังเตรียมไฟล์สำรองข้อมูล…';
+ try{
+  await hydrateSongImages();
+  const payload={format:'ayo-chords-backup',version:1,createdAt:new Date().toISOString(),songs:songs.map(song=>({...song})),sets:sets.map(st=>({...st,ids:[...(st.ids||[])]})),searchCounts:{...searchCounts}};
+  const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
+  const url=URL.createObjectURL(blob),link=document.createElement('a');
+  const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  link.href=url;link.download='ayo-chords-backup-'+stamp+'.json';
+  document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  status.textContent='สร้างไฟล์สำรองข้อมูลเรียบร้อยแล้ว กรุณาเก็บไฟล์ไว้ในที่ปลอดภัย';
+ }catch(e){console.error('AYO backup export:',e);status.textContent='สำรองข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';}
+ finally{button.disabled=false;}
+}
+$('exportBackup').addEventListener('click',exportBackup);
 function resetForm(){ $('songTitle').value='';$('songArtist').value='';$('songImage').value='';$('editId').value='';pendingImage=null;$('previewWrap').classList.add('hidden');$('formTitle').textContent='เพิ่มเพลงใหม่';$('saveSong').textContent='บันทึกเพลง'}
 $('clearForm').onclick=resetForm;
 $('songImage').onchange=e=>{
