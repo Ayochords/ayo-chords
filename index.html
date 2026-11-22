@@ -284,8 +284,9 @@ async function importBackup(){
   });
   const importedSearch={};
   Object.entries(payload.searchCounts).forEach(([key,value])=>{if(key&&Number.isFinite(Number(value))&&Number(value)>=0)importedSearch[key]=Math.floor(Number(value))});
-  const existingIds=new Set(songs.map(song=>String(song.id)));
-  const toAdd=incoming.filter(song=>!existingIds.has(String(song.id)));
+  const existingById=new Map(songs.map(song=>[String(song.id),song]));
+  const toAdd=incoming.filter(song=>!existingById.has(String(song.id)));
+  const imageRepairs=incoming.filter(song=>song.image&&existingById.has(String(song.id))&&!existingById.get(String(song.id)).image);
   const existingSetIds=new Set(sets.map(st=>String(st.id)));
   const existingSetNames=new Set(sets.map(st=>String(st.name||'').toLowerCase()));
   const setAdds=[];
@@ -296,14 +297,23 @@ async function importBackup(){
    existingSetIds.add(id);existingSetNames.add(st.name.toLowerCase());
    setAdds.push({id,name:st.name,ids:st.ids});
   });
-  if(!toAdd.length&&!setAdds.length&&!Object.keys(importedSearch).length){status.textContent='ไฟล์ถูกต้อง แต่ไม่มีข้อมูลใหม่ให้กู้คืน';return}
-  if(!confirm('พบเพลงใหม่ '+toAdd.length+' เพลง และ Setlist ใหม่ '+setAdds.length+' ชุด ต้องการรวมข้อมูลเข้ากับบัญชีนี้หรือไม่? ข้อมูลเดิมจะไม่ถูกเขียนทับ'))return;
+  if(!toAdd.length&&!imageRepairs.length&&!setAdds.length&&!Object.keys(importedSearch).length){status.textContent='ไฟล์ถูกต้อง แต่ไม่มีข้อมูลใหม่ให้กู้คืน';return}
+  if(!confirm('พบเพลงใหม่ '+toAdd.length+' เพลง, รูปคอร์ดที่กู้คืนให้เพลงเดิม '+imageRepairs.length+' รูป และ Setlist ใหม่ '+setAdds.length+' ชุด ต้องการรวมข้อมูลหรือไม่? ชื่อเพลงและข้อมูลเดิมจะไม่ถูกเขียนทับ'))return;
   let saved=0,failed=0;
   for(const song of toAdd){
    songs.push(song);
    if(song.image)await cacheSongImage(song).catch(()=>{});
    if(window.ayoCloudSaveSong){const ok=await window.ayoCloudSaveSong({...song});if(ok===false){failed++;}else{saved++;}}
    else saved++;
+  }
+  for(const repair of imageRepairs){
+   const current=existingById.get(String(repair.id));
+   current.image=repair.image;
+   await cacheSongImage(current).catch(()=>{});
+   if(current.owner_uid&&current.owner_uid===window.ayoCurrentUid&&window.ayoCloudSaveSong){
+    const ok=await window.ayoCloudSaveSong({...current});
+    if(ok===false)failed++;
+   }
   }
   sets.push(...setAdds);
   Object.entries(importedSearch).forEach(([key,value])=>{searchCounts[key]=Math.max(Number(searchCounts[key])||0,value)});
@@ -313,7 +323,7 @@ async function importBackup(){
   if(window.ayoCloudPersist&&setAdds.length)await window.ayoCloudPersist();
   if(window.ayoCloudSaveSearch&&Object.keys(importedSearch).length)await window.ayoCloudSaveSearch(searchCounts);
   renderSongs();renderSets();renderFrequentSongs();
-  status.textContent='กู้คืนเสร็จแล้ว: เพิ่มเพลง '+toAdd.length+' เพลง, Setlist '+setAdds.length+' ชุด'+(failed?' · ซิงค์เพลงไม่สำเร็จ '+failed+' เพลง':'')+' · เพลงเดิมไม่ถูกเขียนทับ';
+  status.textContent='กู้คืนเสร็จแล้ว: เพิ่มเพลง '+toAdd.length+' เพลง, เติมรูปให้เพลงเดิม '+imageRepairs.length+' รูป, Setlist '+setAdds.length+' ชุด'+(failed?' · ซิงค์ Cloud ไม่สำเร็จ '+failed+' รายการ':'')+' · ไม่เขียนทับชื่อหรือข้อมูลเพลงเดิม';
  }catch(e){console.error('AYO backup import:',e);status.textContent='กู้คืนไม่สำเร็จ: '+(e.message||'ไฟล์ไม่ถูกต้อง');}
  finally{importBackupButton.disabled=!(backupFileInput.files&&backupFileInput.files[0]);}
 }
