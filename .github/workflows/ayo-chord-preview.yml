@@ -6,6 +6,7 @@ on:
       - main
   push:
     branches:
+      - main
       - codex/ayo-chord-review-2026-11-21
   workflow_dispatch:
 
@@ -59,7 +60,9 @@ jobs:
           path: preview
 
   deploy-preview:
-    if: github.event_name != 'pull_request'
+    # Deploy only from main. Preview branches and pull requests build artifacts
+    # without attempting a protected GitHub Pages deployment.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: preview-package
     runs-on: ubuntu-latest
     environment:
