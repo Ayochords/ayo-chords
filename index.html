@@ -133,6 +133,11 @@ body.auth-locked>header,body.auth-locked>main,body.auth-locked>#player,body.auth
       <h2>สำรองข้อมูลเพลง</h2>
       <p class="small">ดาวน์โหลดคลังเพลง รูปคอร์ด และ Setlist เก็บไว้ในไฟล์เดียว เพื่อป้องกันข้อมูลสูญหาย</p>
       <button id="exportBackup" type="button" class="secondary">ดาวน์โหลดไฟล์สำรองข้อมูล</button>
+      <hr>
+      <h2>กู้คืนข้อมูลจากไฟล์สำรอง</h2>
+      <p class="small">เลือกไฟล์ JSON ที่เคยดาวน์โหลดไว้ ระบบจะรวมเพลงและ Setlist ที่ยังไม่มี โดยไม่เขียนทับเพลงเดิม และจะไม่ลบข้อมูลปัจจุบัน</p>
+      <input id="importBackupFile" type="file" accept=".json,application/json">
+      <button id="importBackup" type="button" class="secondary" disabled>กู้คืนข้อมูลจากไฟล์นี้</button>
       <div id="backupStatus" class="small" role="status" aria-live="polite" style="margin-top:8px"></div>
     </div>
   </section>
@@ -249,7 +254,70 @@ async function exportBackup(){
  }catch(e){console.error('AYO backup export:',e);status.textContent='สำรองข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';}
  finally{button.disabled=false;}
 }
+
 $('exportBackup').addEventListener('click',exportBackup);
+const backupFileInput=$('importBackupFile'),importBackupButton=$('importBackup');
+backupFileInput.addEventListener('change',()=>{
+ const file=backupFileInput.files&&backupFileInput.files[0];
+ importBackupButton.disabled=!file;
+ $('backupStatus').textContent=file?'เลือกไฟล์: '+file.name:'';
+});
+async function importBackup(){
+ const file=backupFileInput.files&&backupFileInput.files[0],status=$('backupStatus');
+ if(!file||importBackupButton.disabled)return;
+ if(file.size>50*1024*1024){status.textContent='ไฟล์ใหญ่เกิน 50 MB กรุณาเลือกไฟล์สำรองที่เล็กกว่า';return}
+ importBackupButton.disabled=true;status.textContent='กำลังตรวจสอบไฟล์สำรอง…';
+ try{
+  const payload=JSON.parse(await file.text());
+  if(!payload||payload.format!=='ayo-chords-backup'||payload.version!==1||!Array.isArray(payload.songs)||!Array.isArray(payload.sets)||!payload.searchCounts||typeof payload.searchCounts!=='object'||Array.isArray(payload.searchCounts))throw new Error('รูปแบบไฟล์สำรองไม่ถูกต้องหรือไม่รองรับ');
+  if(payload.songs.length>10000||payload.sets.length>1000)throw new Error('จำนวนข้อมูลในไฟล์เกินขีดจำกัดที่รองรับ');
+  const seen=new Set();
+  const incoming=payload.songs.map((song,i)=>{
+   if(!song||typeof song!=='object'||Array.isArray(song)||song.id==null||!String(song.id).trim()||typeof song.title!=='string'||!song.title.trim())throw new Error('ข้อมูลเพลงลำดับที่ '+(i+1)+' ไม่สมบูรณ์');
+   const id=String(song.id);if(seen.has(id))throw new Error('พบรหัสเพลงซ้ำในไฟล์สำรอง: '+id);seen.add(id);
+   if(song.image!=null&&(typeof song.image!=='string'||song.image.length>1200000))throw new Error('รูปคอร์ดของเพลง '+song.title+' มีข้อมูลไม่ถูกต้องหรือใหญ่เกินไป');
+   return {id,title:song.title.trim(),artist:typeof song.artist==='string'?song.artist:'',image:typeof song.image==='string'?song.image:null,createdAt:Number(song.createdAt)||Date.now()};
+  });
+  const incomingSets=payload.sets.map((st,i)=>{
+   if(!st||typeof st!=='object'||typeof st.name!=='string'||!st.name.trim()||!Array.isArray(st.ids))throw new Error('ข้อมูล Setlist ลำดับที่ '+(i+1)+' ไม่สมบูรณ์');
+   return {id:st.id==null?'':String(st.id),name:st.name.trim(),ids:st.ids.filter(id=>id!=null).map(String)};
+  });
+  const importedSearch={};
+  Object.entries(payload.searchCounts).forEach(([key,value])=>{if(key&&Number.isFinite(Number(value))&&Number(value)>=0)importedSearch[key]=Math.floor(Number(value))});
+  const existingIds=new Set(songs.map(song=>String(song.id)));
+  const toAdd=incoming.filter(song=>!existingIds.has(String(song.id)));
+  const existingSetIds=new Set(sets.map(st=>String(st.id)));
+  const existingSetNames=new Set(sets.map(st=>String(st.name||'').toLowerCase()));
+  const setAdds=[];
+  incomingSets.forEach((st,i)=>{
+   if(existingSetIds.has(st.id)||existingSetNames.has(st.name.toLowerCase()))return;
+   let id=st.id||('restore-'+Date.now()+'-'+i);
+   if(existingSetIds.has(id))id='restore-'+Date.now()+'-'+i;
+   existingSetIds.add(id);existingSetNames.add(st.name.toLowerCase());
+   setAdds.push({id,name:st.name,ids:st.ids});
+  });
+  if(!toAdd.length&&!setAdds.length&&!Object.keys(importedSearch).length){status.textContent='ไฟล์ถูกต้อง แต่ไม่มีข้อมูลใหม่ให้กู้คืน';return}
+  if(!confirm('พบเพลงใหม่ '+toAdd.length+' เพลง และ Setlist ใหม่ '+setAdds.length+' ชุด ต้องการรวมข้อมูลเข้ากับบัญชีนี้หรือไม่? ข้อมูลเดิมจะไม่ถูกเขียนทับ'))return;
+  let saved=0,failed=0;
+  for(const song of toAdd){
+   songs.push(song);
+   if(song.image)await cacheSongImage(song).catch(()=>{});
+   if(window.ayoCloudSaveSong){const ok=await window.ayoCloudSaveSong({...song});if(ok===false){failed++;}else{saved++;}}
+   else saved++;
+  }
+  sets.push(...setAdds);
+  Object.entries(importedSearch).forEach(([key,value])=>{searchCounts[key]=Math.max(Number(searchCounts[key])||0,value)});
+  localStorage.setItem('ayo_songs',JSON.stringify(localSongMetadata()));
+  localStorage.setItem('ayo_sets',JSON.stringify(sets));
+  localStorage.setItem('ayo_search_counts',JSON.stringify(searchCounts));
+  if(window.ayoCloudPersist&&setAdds.length)await window.ayoCloudPersist();
+  if(window.ayoCloudSaveSearch&&Object.keys(importedSearch).length)await window.ayoCloudSaveSearch(searchCounts);
+  renderSongs();renderSets();renderFrequentSongs();
+  status.textContent='กู้คืนเสร็จแล้ว: เพิ่มเพลง '+toAdd.length+' เพลง, Setlist '+setAdds.length+' ชุด'+(failed?' · ซิงค์เพลงไม่สำเร็จ '+failed+' เพลง':'')+' · เพลงเดิมไม่ถูกเขียนทับ';
+ }catch(e){console.error('AYO backup import:',e);status.textContent='กู้คืนไม่สำเร็จ: '+(e.message||'ไฟล์ไม่ถูกต้อง');}
+ finally{importBackupButton.disabled=!(backupFileInput.files&&backupFileInput.files[0]);}
+}
+importBackupButton.addEventListener('click',importBackup);
 function resetForm(){ $('songTitle').value='';$('songArtist').value='';$('songImage').value='';$('editId').value='';pendingImage=null;$('previewWrap').classList.add('hidden');$('formTitle').textContent='เพิ่มเพลงใหม่';$('saveSong').textContent='บันทึกเพลง'}
 $('clearForm').onclick=resetForm;
 $('songImage').onchange=e=>{
