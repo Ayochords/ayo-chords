@@ -11,10 +11,16 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ayo-chord-preview
+  cancel-in-progress: true
 
 jobs:
   preview-package:
-    name: Build downloadable preview
+    name: Build HTTPS preview and downloadable package
     runs-on: ubuntu-latest
     steps:
       - name: Check out preview branch
@@ -34,10 +40,32 @@ jobs:
           cd preview
           zip -r ../ayo-chord-preview.zip .
 
-      - name: Upload preview artifact
+      - name: Upload downloadable preview
         uses: actions/upload-artifact@v4
         with:
           name: ayo-chord-preview
           path: ayo-chord-preview.zip
           if-no-files-found: error
           retention-days: 7
+
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      - name: Upload HTTPS site artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: preview
+
+  deploy-preview:
+    if: github.event_name != 'pull_request'
+    needs: preview-package
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish HTTPS preview
+        id: deployment
+        uses: actions/deploy-pages@v4
