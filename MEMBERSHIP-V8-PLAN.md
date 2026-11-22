@@ -1,54 +1,57 @@
-# AYO CHORDS V8 — Membership & Level System
+# AYO CHORDS V8 — Membership, XP & Library Permissions
 
 ## Scope and release safety
 - Implement only on `v8-development`.
 - Do not modify `main` (the live V7 deployment) or change the GitHub Pages URL.
 - Keep existing song, chord-image, Setlist, backup, and restore data compatible.
 
-## Member profile
-Each authenticated Firebase user should have a profile stored under `users/{uid}/profile/membership` (or an equivalent single profile document), keyed by the immutable Firebase Auth UID, never by IP address or device.
+## Member identity and profile
+Each authenticated Firebase user has a profile keyed by immutable Firebase Auth UID, never by IP address or device.
 Suggested fields:
 - `uid`, `displayName`, `photoURL`, `createdAt`
-- `xpTotal`, `levelId`, `updatedAt`
-- optional public profile fields only; email and private account data must not be exposed in public member listings.
+- `xpTotal`, derived `levelId`, `updatedAt`
+- Keep email and private account data out of public member listings.
 
-## Proposed levels (initial defaults; configurable later)
-| Level | XP threshold |
-|---|---:|
-| MEMBER | 0 |
-| MUSICIAN | 100 |
-| PRO | 500 |
-| VIP | 1,500 |
+## Five membership levels (initial proposed thresholds)
+| Level | XP threshold | Library delete permission |
+|---|---:|---|
+| MEMBER | 0 | Delete own songs only |
+| MUSICIAN | 100 | Delete own songs only |
+| PRO | 500 | Elevated delete permission, subject to confirmed scope below |
+| PREMIUM | 1,000 | Elevated delete permission, subject to confirmed scope below |
+| VIP | 1,500 | Elevated delete permission, subject to confirmed scope below |
 
-The displayed progress bar should show current XP, next level threshold, and remaining XP. Level is derived from the authoritative XP total, not manually selected by the client.
+Levels are derived from authoritative XP. The profile shows current XP, next threshold, and remaining XP. Thresholds are initial defaults and can be adjusted before release.
 
 ## XP activity policy (initial defaults)
 | Activity | XP | Eligibility |
 |---|---:|---|
-| Add a song | +20 | Only after a new song is successfully saved to Cloud; no XP for edits, failed uploads, imports, or duplicates |
-| Create a Setlist | +10 | Only after a new Setlist is successfully saved; edits do not award XP |
-| Daily active use | +5 | At most once per UTC calendar day, after authenticated use |
+| Add a song | +20 | Only after a genuinely new song is successfully saved to Cloud; no XP for edits, failed uploads, imports, or duplicates |
+| Create a Setlist | +10 | Only after a genuinely new Setlist is successfully saved; edits do not award XP |
+| Daily active use | +5 | At most once per UTC calendar day after authenticated use |
 
-## Abuse prevention and data integrity
-- Award XP idempotently with a unique event key (UID + activity + target ID/day) so retries and repeated taps cannot award twice.
-- Do not trust XP amounts, level names, owner roles, or activity claims supplied by the browser.
-- Enforce award eligibility and privileged role checks in trusted server-side code or equivalent protected Firestore rules. Client-side checks alone are not authorization.
-- Do not use IP address as a member identity or authorization credential.
-- Keep a membership activity ledger so support/admin can audit XP awards and corrections.
-- Profile reads/writes must be scoped to the signed-in UID; privileged administration must use an explicit trusted role claim, not a client-editable profile field.
-- Do not backfill XP from existing songs or Setlists until a migration policy is reviewed; this avoids accidental duplicate or unfair awards.
+Award XP idempotently with a unique event key (UID + activity + target ID/day). Do not award duplicate points for retries or repeated taps. Do not backfill XP from existing content until a migration policy is approved.
+
+## Permission policy
+- MEMBER and MUSICIAN may delete only songs they own.
+- PRO, PREMIUM, and VIP are proposed to receive broader song-deletion privileges.
+- Before enabling broader deletion, confirm whether this means deleting songs belonging to any member in the shared library, or only any song in the signed-in member's own library.
+- If cross-member deletion is approved, require trusted server-side authorization / protected Firestore rules, a confirmation showing the song and original owner, an audit record (actor UID, target song, owner UID, timestamp), and preferably soft-delete/trash with a recovery window.
+- Never grant cross-member deletion based on IP address, client-side UI state, or a client-editable profile field.
+- XP and level cannot themselves be edited by the member. Privileged role claims must be assigned through a trusted administrative process.
 
 ## UI requirements
-- Add a member profile entry point and profile screen showing avatar, display name, level badge, XP total, progress to next level, and activity history.
-- Show the member's level consistently without changing the existing song library or Setlist workflows.
-- Provide clear loading, empty, offline, and sync-error states.
-- A user must not be able to edit their own XP, level, or privileged role from the profile UI.
+- Add a member profile screen with avatar, display name, level badge, XP total, progress to next level, and activity history.
+- Show level consistently without disrupting existing library and Setlist workflows.
+- Provide loading, empty, offline, and sync-error states.
+- Show clear permission messaging when a member attempts an action unavailable at their level.
 
 ## Test and release gates
-1. Test new registration and existing account sign-in.
+1. Test registration and existing account sign-in.
 2. Test XP for successful song creation, Setlist creation, and once-daily activity.
-3. Verify duplicate taps, retries, edits, failed writes, imports, and offline actions award no duplicate XP.
-4. Verify users cannot read or alter another user's private profile or XP ledger.
-5. Verify level progression and progress-bar boundaries.
-6. Test iPhone Safari and Android Chrome.
-7. Keep V8 on the development branch until all gates pass; only then prepare a reviewed release to the existing URL.
+3. Verify retries, duplicate taps, edits, failed writes, imports, and offline actions cannot award duplicate XP.
+4. Verify members cannot read or alter another member's private profile or XP ledger.
+5. Verify all five level thresholds and permission boundaries.
+6. Test deletion audit and recovery behavior, including unauthorized attempts.
+7. Test iPhone Safari and Android Chrome.
+8. Keep V8 on the development branch until all gates pass; only then prepare a reviewed release to the existing URL.
