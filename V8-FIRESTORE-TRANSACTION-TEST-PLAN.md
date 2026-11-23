@@ -11,6 +11,7 @@ Branch: `v8-development`
 - Uses a Firestore transaction to read the reservation and target song, then atomically write the reservation and song document.
 - Rejects a reservation owned by a different song ID.
 - Releases the previous reservation on an owned song rename only when that reservation still points to the same song and user.
+- Deletes an owned song and its matching reservation in one transaction; it leaves a reservation untouched if it belongs to a different canonical song.
 - Stores `dedupe_lock_id` on the song document to support a future Security Rules check.
 - Keeps the existing local image cache behavior after a successful Cloud write.
 
@@ -31,9 +32,10 @@ The legacy scan is intentionally retained because older song documents may not h
 7. Renaming an owned song creates the new reservation and releases only its own old reservation.
 8. A user cannot overwrite a song or reservation owned by another user.
 9. A failed transaction leaves neither a partial song write nor a partial reservation.
-10. Images remain intact after add/edit, and Setlist song IDs continue to resolve.
-11. Network interruption and permission-denied errors show failure without reporting a successful upload.
-12. Run the same tests against the deployed Security Rules, not only the local app code.
+10. Deleting an owned song removes its own reservation in the same transaction and never removes another song's reservation.
+11. Images remain intact after add/edit, and Setlist song IDs continue to resolve.
+12. Network interruption and permission-denied errors show failure without reporting a successful upload.
+13. Run the same tests against the deployed Security Rules, not only the local app code.
 
 ## Release gate
 
