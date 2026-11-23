@@ -97,8 +97,7 @@ body.auth-locked>header,body.auth-locked>main,body.auth-locked>#player,body.auth
 <header><div><div class="brand">AYO CHORDS</div><div class="sub">LIVE MUSIC COMPANION</div></div><div class="row" style="align-items:center;gap:8px;flex:0 0 auto"><div class="small" id="count">0 SONGS</div><button id="logoutBtn" type="button">ออกจากระบบ</button></div></header>
 <main>
   <div class="tabs">
-    <button class="tab active" data-tab="library">คลังเพลง</button>    <button class="tab" data-tab="sets">Setlist</button>    <button class="tab" data-tab="add">เพิ่มเพลง</button>
-  </div>
+    <button class="tab active" data-tab="library">คลังเพลง</button>    <button class="tab" data-tab="sets">Setlist</button>    <button class="tab" data-tab="add">เพิ่มเพลง</button>  </div>
   <section id="library">
     <h1>คลังเพลงของคุณ</h1><p class="muted">ค้นหาเพลง แล้วแตะเพื่อเปิดคอร์ดแบบเต็มจอ</p>
     <div class="searchrow"><input id="search" placeholder="ค้นหาชื่อเพลงหรือศิลปิน…" autocomplete="off"><button id="voiceSearch" class="micbtn" aria-label="ค้นหาด้วยเสียง" title="ค้นหาด้วยเสียง">🎙️</button></div><div class="small" id="voiceHint" style="margin:-6px 0 12px">แตะไมค์แล้วพูดชื่อเพลงเพื่อค้นหา</div><div id="voiceStatus" class="voice-status" role="status" aria-live="polite"><span class="voice-dot"></span><strong id="voiceStatusTitle">กำลังฟังอยู่</strong><span class="small" id="voiceStatusText" style="color:#ffd1cc">พูดชื่อเพลงได้เลย</span><span class="voice-bars"><i></i><i></i><i></i><i></i><i></i></span></div>
@@ -197,8 +196,7 @@ function setListening(active){
  $('voiceSearch').setAttribute('aria-pressed',String(active));
  $('voiceStatus').classList.toggle('active',active); $('voiceStatus').classList.toggle('notice',false);$('voiceStatus').classList.toggle('error',false);
  if(active)voiceMessage('กำลังฟังอยู่','พูดชื่อเพลงหรือชื่อศิลปินได้เลย','notice');}
-function useKeyboardDictation(reason){
- setListening(false);
+function useKeyboardDictation(reason){ setListening(false);
  voiceMessage('ใช้ไมโครโฟนบนคีย์บอร์ด iPhone',reason+' แตะช่องค้นหา แล้วแตะรูปไมโครโฟนบนคีย์บอร์ดเพื่อพูดชื่อเพลงหรือศิลปิน','notice');
  $('search').focus();
 }
@@ -297,8 +295,7 @@ async function importBackup(){
   });
   if(!toAdd.length&&!imageRepairs.length&&!setAdds.length&&!Object.keys(importedSearch).length){status.textContent='ไฟล์ถูกต้อง แต่ไม่มีข้อมูลใหม่ให้กู้คืน';return}  if(!confirm('พบเพลงใหม่ '+toAdd.length+' เพลง, รูปคอร์ดที่กู้คืนให้เพลงเดิม '+imageRepairs.length+' รูป และ Setlist ใหม่ '+setAdds.length+' ชุด ต้องการรวมข้อมูลหรือไม่? ชื่อเพลงและข้อมูลเดิมจะไม่ถูกเขียนทับ'))return;
   let saved=0,failed=0;
-  for(const song of toAdd){
-   songs.push(song);
+  for(const song of toAdd){   songs.push(song);
    if(song.image)await cacheSongImage(song).catch(()=>{});
    if(window.ayoCloudSaveSong){const ok=await window.ayoCloudSaveSong({...song});if(ok===false){failed++;}else{saved++;}}
    else saved++;
@@ -397,8 +394,7 @@ function renderSets(){
   head.append(open,count,edit,play);card.appendChild(head);  const editor=document.createElement('div');editor.className='set-editor hidden';
   const searchLabel=document.createElement('label');searchLabel.textContent='ค้นหาเพลงเพื่อเพิ่มเข้า Setlist';editor.appendChild(searchLabel);
   const find=document.createElement('input');find.type='search';find.placeholder='พิมพ์ชื่อเพลงหรือศิลปิน…';find.autocomplete='off';editor.appendChild(find);
-  const results=document.createElement('div');results.className='set-add-results';editor.appendChild(results);
-  const rows=document.createElement('div');editor.appendChild(rows);
+  const results=document.createElement('div');results.className='set-add-results';editor.appendChild(results);  const rows=document.createElement('div');editor.appendChild(rows);
   function renderAddResults(){const term=find.value.trim().toLowerCase();results.innerHTML='';if(!term){return}const matches=songs.filter(song=>(song.title+' '+(song.artist||'')).toLowerCase().includes(term)&&!st.ids.includes(song.id)).slice(0,30);if(!matches.length){return}matches.forEach(song=>{const row=document.createElement('div');row.className='set-add-result';const label=document.createElement('span');label.textContent=song.title+(song.artist?' · '+song.artist:'');const add=document.createElement('button');add.type='button';add.textContent='＋ เพิ่ม';add.onclick=()=>{st.ids.push(song.id);renderEditorRows();renderAddResults();count.textContent=st.ids.length+' เพลง'};row.append(label,add);results.appendChild(row)})}
  function renderEditorRows(){rows.innerHTML='';const list=st.ids.map(id=>songs.find(song=>song.id===id)).filter(Boolean);if(!list.length){return}list.forEach((song,i)=>{const row=document.createElement('div');row.className='setrow';const title=document.createElement('button');title.type='button';title.className='set-song-title';title.textContent=(i+1)+'. '+song.title;title.setAttribute('aria-label','เปิดคอร์ดเพลง '+song.title+' และเล่นต่อในลำดับ Setlist');title.onclick=()=>playSet(st,i);const order=document.createElement('div');order.className='set-order';const up=document.createElement('button');up.className='secondary';up.type='button';up.textContent='↑';up.disabled=i===0;up.onclick=()=>{[st.ids[i-1],st.ids[i]]=[st.ids[i],st.ids[i-1]];renderEditorRows()};const down=document.createElement('button');down.className='secondary';down.type='button';down.textContent='↓';down.disabled=i===list.length-1;down.onclick=()=>{[st.ids[i+1],st.ids[i]]=[st.ids[i],st.ids[i+1]];renderEditorRows()};order.append(up,down);const remove=document.createElement('button');remove.className='danger';remove.type='button';remove.textContent='ลบ';remove.onclick=()=>{st.ids=st.ids.filter(id=>id!==song.id);renderEditorRows();renderAddResults();count.textContent=st.ids.length+' เพลง'};row.append(title,order,remove);rows.appendChild(row)})}
  find.addEventListener('input',renderAddResults);
@@ -457,8 +453,7 @@ songs=read('ayo_songs',[]);sets=read('ayo_sets',[]);renderSongs();renderSets();h
      }
     }
     if(!songSnap.exists)clean.created_at=firebase.firestore.FieldValue.serverTimestamp();
-    else clean.updated_at=firebase.firestore.FieldValue.serverTimestamp();
-    tx.set(lockRef,{song_id:id,owner_uid:uid,title:clean.title,artist:clean.artist,dedupe_key:key,updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    else clean.updated_at=firebase.firestore.FieldValue.serverTimestamp();    tx.set(lockRef,{song_id:id,owner_uid:uid,title:clean.title,artist:clean.artist,dedupe_key:key,updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
     tx.set(songRef,clean,{merge:true});
     if(oldLockRef&&oldLockSnap&&oldLockSnap.exists&&String(oldLockSnap.data().song_id)===id&&oldLockSnap.data().owner_uid===uid)tx.delete(oldLockRef);
     return true;
@@ -470,7 +465,23 @@ songs=read('ayo_songs',[]);sets=read('ayo_sets',[]);renderSongs();renderSets();h
    return true;
   }catch(e){cloudError(e);return false}
  }
- async function deleteCloudSong(id){if(!db||!auth.currentUser)return;try{const ref=db.collection('public_songs').doc(String(id));const snap=await ref.get();if(snap.exists&&snap.data().owner_uid===auth.currentUser.uid)await ref.delete();}catch(e){cloudError(e)}}
+ async function deleteCloudSong(id){
+  if(!db||!auth.currentUser)return false;
+  const uid=auth.currentUser.uid,ref=db.collection('public_songs').doc(String(id));
+  try{
+   return await db.runTransaction(async tx=>{
+    const snap=await tx.get(ref);
+    if(!snap.exists||snap.data().owner_uid!==uid)return false;
+    const data=snap.data()||{};
+    const lockId=data.dedupe_lock_id||await songUniquenessId({title:data.title,artist:data.artist});
+    const lockRef=db.collection('song_uniqueness').doc(lockId);
+    const lockSnap=await tx.get(lockRef);
+    if(lockSnap.exists&&String(lockSnap.data().song_id)===String(id)&&lockSnap.data().owner_uid===uid)tx.delete(lockRef);
+    tx.delete(ref);
+    return true;
+   });
+  }catch(e){cloudError(e);return false}
+ }
  let cloudSetQueue=Promise.resolve(),activeCloudUid=null,cloudSetsReady=false,cloudSearchReady=false;async function saveCloudSets(){if(!db||!auth.currentUser||!cloudSetsReady||activeCloudUid!==auth.currentUser.uid)return false;const uid=auth.currentUser.uid;const snapshot=sets.map(st=>({id:String(st.id),name:String(st.name||''),ids:Array.isArray(st.ids)?[...st.ids]:[]}));cloudSetQueue=cloudSetQueue.then(async()=>{const col=db.collection('users').doc(uid).collection('setlists');const batch=db.batch();snapshot.forEach(st=>batch.set(col.doc(st.id),{name:st.name,ids:st.ids,updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}));if(snapshot.length)await batch.commit();return true}).catch(e=>{cloudError(e);return false});return cloudSetQueue}async function deleteCloudSet(id){if(!db||!auth.currentUser||!cloudSetsReady||activeCloudUid!==auth.currentUser.uid)return false;const uid=auth.currentUser.uid;cloudSetQueue=cloudSetQueue.then(async()=>{await db.collection('users').doc(uid).collection('setlists').doc(String(id)).delete();return true}).catch(e=>{cloudError(e);return false});return cloudSetQueue}
  async function saveCloudSearch(counts){if(!db||!auth.currentUser||!cloudSearchReady||activeCloudUid!==auth.currentUser.uid)return;try{await db.collection('users').doc(auth.currentUser.uid).collection('private').doc('search_history').set({counts:counts,updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})}catch(e){cloudError(e)}}
  function startCloud(user){stopCloudListeners();activeCloudUid=user.uid;cloudSetsReady=false;cloudSearchReady=false;sets=[];searchCounts={};try{localStorage.setItem('ayo_sets','[]');localStorage.setItem('ayo_search_counts','{}')}catch(e){}renderSets();window.ayoCurrentUid=user.uid;
