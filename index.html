@@ -97,8 +97,7 @@ body.auth-locked>header,body.auth-locked>main,body.auth-locked>#player,body.auth
 <header><div><div class="brand">AYO CHORDS</div><div class="sub">LIVE MUSIC COMPANION</div></div><div class="row" style="align-items:center;gap:8px;flex:0 0 auto"><div class="small" id="count">0 SONGS</div><button id="logoutBtn" type="button">ออกจากระบบ</button></div></header>
 <main>
   <div class="tabs">
-    <button class="tab active" data-tab="library">คลังเพลง</button>    <button class="tab" data-tab="sets">Setlist</button>
-    <button class="tab" data-tab="add">เพิ่มเพลง</button>
+    <button class="tab active" data-tab="library">คลังเพลง</button>    <button class="tab" data-tab="sets">Setlist</button>    <button class="tab" data-tab="add">เพิ่มเพลง</button>
   </div>
   <section id="library">
     <h1>คลังเพลงของคุณ</h1><p class="muted">ค้นหาเพลง แล้วแตะเพื่อเปิดคอร์ดแบบเต็มจอ</p>
@@ -197,8 +196,7 @@ function setListening(active){
  $('voiceSearch').textContent=active?'⏺':'🎙️';
  $('voiceSearch').setAttribute('aria-pressed',String(active));
  $('voiceStatus').classList.toggle('active',active); $('voiceStatus').classList.toggle('notice',false);$('voiceStatus').classList.toggle('error',false);
- if(active)voiceMessage('กำลังฟังอยู่','พูดชื่อเพลงหรือชื่อศิลปินได้เลย','notice');
-}
+ if(active)voiceMessage('กำลังฟังอยู่','พูดชื่อเพลงหรือชื่อศิลปินได้เลย','notice');}
 function useKeyboardDictation(reason){
  setListening(false);
  voiceMessage('ใช้ไมโครโฟนบนคีย์บอร์ด iPhone',reason+' แตะช่องค้นหา แล้วแตะรูปไมโครโฟนบนคีย์บอร์ดเพื่อพูดชื่อเพลงหรือศิลปิน','notice');
@@ -297,8 +295,7 @@ async function importBackup(){
    if(existingSetIds.has(id))id='restore-'+Date.now()+'-'+i;
    existingSetIds.add(id);existingSetNames.add(st.name.toLowerCase());   setAdds.push({id,name:st.name,ids:st.ids});
   });
-  if(!toAdd.length&&!imageRepairs.length&&!setAdds.length&&!Object.keys(importedSearch).length){status.textContent='ไฟล์ถูกต้อง แต่ไม่มีข้อมูลใหม่ให้กู้คืน';return}
-  if(!confirm('พบเพลงใหม่ '+toAdd.length+' เพลง, รูปคอร์ดที่กู้คืนให้เพลงเดิม '+imageRepairs.length+' รูป และ Setlist ใหม่ '+setAdds.length+' ชุด ต้องการรวมข้อมูลหรือไม่? ชื่อเพลงและข้อมูลเดิมจะไม่ถูกเขียนทับ'))return;
+  if(!toAdd.length&&!imageRepairs.length&&!setAdds.length&&!Object.keys(importedSearch).length){status.textContent='ไฟล์ถูกต้อง แต่ไม่มีข้อมูลใหม่ให้กู้คืน';return}  if(!confirm('พบเพลงใหม่ '+toAdd.length+' เพลง, รูปคอร์ดที่กู้คืนให้เพลงเดิม '+imageRepairs.length+' รูป และ Setlist ใหม่ '+setAdds.length+' ชุด ต้องการรวมข้อมูลหรือไม่? ชื่อเพลงและข้อมูลเดิมจะไม่ถูกเขียนทับ'))return;
   let saved=0,failed=0;
   for(const song of toAdd){
    songs.push(song);
@@ -397,8 +394,7 @@ function renderSets(){
   const open=document.createElement('button');open.className='set-open';open.type='button';open.textContent=st.name;  const count=document.createElement('span');count.className='set-count';count.textContent=st.ids.length+' เพลง';
   const edit=document.createElement('button');edit.className='secondary';edit.type='button';edit.textContent='จัดเพลง';
   const play=document.createElement('button');play.type='button';play.textContent='▶';play.title='เล่น Setlist';play.onclick=()=>playSet(st,0);
-  head.append(open,count,edit,play);card.appendChild(head);
-  const editor=document.createElement('div');editor.className='set-editor hidden';
+  head.append(open,count,edit,play);card.appendChild(head);  const editor=document.createElement('div');editor.className='set-editor hidden';
   const searchLabel=document.createElement('label');searchLabel.textContent='ค้นหาเพลงเพื่อเพิ่มเข้า Setlist';editor.appendChild(searchLabel);
   const find=document.createElement('input');find.type='search';find.placeholder='พิมพ์ชื่อเพลงหรือศิลปิน…';find.autocomplete='off';editor.appendChild(find);
   const results=document.createElement('div');results.className='set-add-results';editor.appendChild(results);
@@ -445,7 +441,7 @@ songs=read('ayo_songs',[]);sets=read('ayo_sets',[]);renderSongs();renderSets();h
    const allCloudSongs=await db.collection('public_songs').get();
    const legacyDuplicate=allCloudSongs.docs.find(d=>{if(d.id===id)return false;const data=d.data()||{};return songDedupeKey({title:data.title,artist:data.artist})===key;});
    if(legacyDuplicate){toast('มีเพลงชื่อนี้และศิลปินนี้อยู่ใน Cloud แล้ว ระบบป้องกันการเพิ่มเพลงซ้ำ');return false;}
-   const lockId=await songUniquenessId(song),lockRef=db.collection('song_uniqueness').doc(lockId);
+   const lockId=await songUniquenessId(song),lockRef=db.collection('song_uniqueness').doc(lockId);clean.dedupe_lock_id=lockId;
    const saved=await db.runTransaction(async tx=>{
     const lockSnap=await tx.get(lockRef);
     const songSnap=await tx.get(songRef);
@@ -457,8 +453,7 @@ songs=read('ayo_songs',[]);sets=read('ayo_sets',[]);renderSongs();renderSets();h
      const previousKey=songDedupeKey({title:previous.title,artist:previous.artist});
      if(previousKey&&previousKey!==key){
       const previousLockId=await songUniquenessId({title:previous.title,artist:previous.artist});
-      oldLockRef=db.collection('song_uniqueness').doc(previousLockId);
-      oldLockSnap=await tx.get(oldLockRef);
+      oldLockRef=db.collection('song_uniqueness').doc(previousLockId);      oldLockSnap=await tx.get(oldLockRef);
      }
     }
     if(!songSnap.exists)clean.created_at=firebase.firestore.FieldValue.serverTimestamp();
