@@ -27,8 +27,6 @@ service cloud.firestore {
     match /public_songs/{songId} {
       allow read: if true;
 
-      // สร้าง/แก้ไขเพลงได้เฉพาะเจ้าของ และต้องมี reservation
-      // ที่ชี้กลับมาหาเพลงนี้หลังจบ transaction
       allow create: if signedIn()
         && request.resource.data.owner_uid == request.auth.uid
         && request.resource.data.dedupe_lock_id is string
@@ -44,8 +42,6 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/song_uniqueness/$(request.resource.data.dedupe_lock_id)).data.owner_uid == request.auth.uid
         && getAfter(/databases/$(database)/documents/song_uniqueness/$(request.resource.data.dedupe_lock_id)).data.dedupe_key == request.resource.data.dedupe_key;
 
-      // เพลงเก่าที่ไม่มี dedupe_lock_id ยังลบได้โดยเจ้าของ
-      // ส่วนเพลงใหม่ต้องปลด reservation ใน transaction เดียวกัน
       allow delete: if signedIn()
         && resource.data.owner_uid == request.auth.uid
         && (!(resource.data.dedupe_lock_id is string)
@@ -55,18 +51,24 @@ service cloud.firestore {
 
     // Reservation ป้องกันเพลงซ้ำ
     match /song_uniqueness/{lockId} {
-      // ต้องอ่านได้เมื่อเข้าสู่ระบบ เพื่อให้ transaction ตรวจพบ
-      // reservation ที่สมาชิกคนอื่นถืออยู่และปฏิเสธเพลงซ้ำ
+      // Client ต้องอ่าน lock ของผู้อื่นได้เพื่อปฏิเสธเพลงซ้ำ
+      // ข้อมูลใน collection นี้จึงต้องไม่มีข้อมูลส่วนตัวหรือข้อมูลลับ
       allow read: if signedIn();
 
-      allow create, update: if signedIn()
+      allow create: if signedIn()
         && request.resource.data.owner_uid == request.auth.uid
         && getAfter(/databases/$(database)/documents/public_songs/$(request.resource.data.song_id)).data.owner_uid == request.auth.uid
         && getAfter(/databases/$(database)/documents/public_songs/$(request.resource.data.song_id)).data.dedupe_lock_id == lockId
         && getAfter(/databases/$(database)/documents/public_songs/$(request.resource.data.song_id)).data.dedupe_key == request.resource.data.dedupe_key;
 
-      // ปลด reservation ได้เฉพาะเจ้าของ และเมื่อเพลงหลัง transaction
-      // ไม่มีการอ้างอิง lock นี้แล้ว
+      // สำคัญ: ห้ามผู้ใช้แก้ reservation ที่เดิมเป็นของสมาชิกคนอื่น
+      allow update: if signedIn()
+        && resource.data.owner_uid == request.auth.uid
+        && request.resource.data.owner_uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/public_songs/$(request.resource.data.song_id)).data.owner_uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/public_songs/$(request.resource.data.song_id)).data.dedupe_lock_id == lockId
+        && getAfter(/databases/$(database)/documents/public_songs/$(request.resource.data.song_id)).data.dedupe_key == request.resource.data.dedupe_key;
+
       allow delete: if signedIn()
         && resource.data.owner_uid == request.auth.uid
         && (!existsAfter(/databases/$(database)/documents/public_songs/$(resource.data.song_id))
@@ -84,20 +86,21 @@ service cloud.firestore {
 }
 ```
 
-## เหตุผลที่เพิ่มกฎ
+## จุดที่แก้เพิ่มในการตรวจสอบรอบนี้
 
-- V8 อ่านและเขียน `song_uniqueness` ภายใน Firestore Transaction แต่กฎเดิมไม่มี match สำหรับ collection นี้
-- `getAfter()` ใช้ตรวจว่าการเขียนเพลงและ reservation เชื่อมโยงกันหลัง transaction ไม่ใช่เขียนแยกกัน
-- จำกัดการแก้ไข/ลบ reservation ให้เฉพาะเจ้าของ
-- รักษาสิทธิ์ users, public_songs และ song_contributions ตามกฎเดิมที่ได้รับ
+- แยก `create` และ `update` ของ `song_uniqueness`
+- การ `update` ต้องตรวจว่า reservation เดิมเป็นของผู้ใช้ที่ล็อกอินอยู่ด้วย
+- การอ่าน reservation ยังอนุญาตเฉพาะผู้ใช้ที่ล็อกอิน เพราะแอปต้องตรวจพบ lock ที่มีเจ้าของคนอื่นก่อนปฏิเสธเพลงซ้ำ
+- ห้ามเก็บข้อมูลส่วนตัวหรือข้อมูลลับไว้ใน `song_uniqueness` เพราะผู้ใช้ที่ล็อกอินทุกคนอ่าน collection นี้ได้
 
 ## ข้อควรตรวจสอบก่อน Deploy
 
-1. ทดสอบ rules ใน Firebase Emulator หรือ Firebase test project ก่อน
+1. ทดสอบ Rules ใน Firebase Emulator หรือ Firebase test project ก่อน
 2. ทดสอบเพิ่มเพลงใหม่และแก้ชื่อเพลง (ต้องสร้าง reservation ใหม่และปลดอันเก่าได้)
 3. ทดสอบลบเพลงใหม่และเพลงเก่าที่ไม่มี `dedupe_lock_id`
 4. ทดสอบสมาชิกสองบัญชีเพิ่มเพลงชื่อ/ศิลปินเดียวกันพร้อมกัน — ต้องมีเพียงหนึ่งบัญชีสำเร็จ
-5. ทดสอบ Setlist, ประวัติการค้นหา, Contributions และการอ่านคลังเพลง
-6. ตรวจ schema ของเอกสารเก่าและข้อมูลจริงก่อน Deploy
+5. ทดสอบว่าบัญชี A ไม่สามารถ update/delete reservation ของบัญชี B ได้
+6. ทดสอบ Setlist, ประวัติการค้นหา, Contributions และการอ่านคลังเพลง
+7. ตรวจ schema ของเอกสารเก่าและข้อมูลจริงก่อน Deploy
 
 ข้อจำกัด: ร่างนี้ยังไม่ได้ผ่าน Emulator/Test Project และยังไม่ได้ Publish ไปยัง Firebase จริง ห้ามนำไปแทนกฎ Production โดยตรงก่อนทดสอบ regression ครบทุกกรณี
