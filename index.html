@@ -97,11 +97,7 @@ body.auth-locked>header,body.auth-locked>main,body.auth-locked>#player,body.auth
 <header><div><div class="brand">AYO CHORDS</div><div class="sub">LIVE MUSIC COMPANION</div></div><div class="row" style="align-items:center;gap:8px;flex:0 0 auto"><div class="small" id="count">0 SONGS</div><button id="logoutBtn" type="button">ออกจากระบบ</button></div></header>
 <main>
   <div class="tabs">
-    <button class="tab active" data-tab="library">คลังเพลง</button>
-    <button class="tab" data-tab="sets">Setlist</button>
-    <button class="tab" data-tab="add">เพิ่มเพลง</button>
-  </div>
-  <section id="library">
+    <button class="tab active" data-tab="library">คลังเพลง</button>    <button class="tab" data-tab="sets">Setlist</button>    <button class="tab" data-tab="add">เพิ่มเพลง</button>  </div>  <section id="library">
     <h1>คลังเพลงของคุณ</h1><p class="muted">ค้นหาเพลง แล้วแตะเพื่อเปิดคอร์ดแบบเต็มจอ</p>
     <div class="searchrow"><input id="search" placeholder="ค้นหาชื่อเพลงหรือศิลปิน…" autocomplete="off"><button id="voiceSearch" class="micbtn" aria-label="ค้นหาด้วยเสียง" title="ค้นหาด้วยเสียง">🎙️</button></div><div class="small" id="voiceHint" style="margin:-6px 0 12px">แตะไมค์แล้วพูดชื่อเพลงเพื่อค้นหา</div><div id="voiceStatus" class="voice-status" role="status" aria-live="polite"><span class="voice-dot"></span><strong id="voiceStatusTitle">กำลังฟังอยู่</strong><span class="small" id="voiceStatusText" style="color:#ffd1cc">พูดชื่อเพลงได้เลย</span><span class="voice-bars"><i></i><i></i><i></i><i></i><i></i></span></div>
     <div class="panel" id="songlist"></div>
@@ -129,6 +125,17 @@ body.auth-locked>header,body.auth-locked>main,body.auth-locked>#player,body.auth
       <hr><div id="uploadStatus" class="panel hidden" role="status" aria-live="polite" style="margin:10px 0;padding:12px"><div id="uploadStatusText">กำลังเตรียมข้อมูล…</div><div style="height:7px;background:#344239;border-radius:8px;overflow:hidden;margin-top:9px"><div id="uploadProgress" style="height:100%;width:0;background:#d7b66b;border-radius:8px;transition:width .25s"></div></div><div id="uploadStatusHint" class="small" style="margin-top:7px">กรุณาอย่าปิดแอประหว่างบันทึก</div></div><div class="actions"><button id="saveSong">บันทึกเพลง</button><button class="secondary" id="clearForm">ล้าง</button></div>
       <input id="editId" type="hidden">
     </div>
+    <div class="panel" style="margin-top:14px">
+      <h2>สำรองข้อมูลเพลง</h2>
+      <p class="small">ดาวน์โหลดคลังเพลง รูปคอร์ด และ Setlist เก็บไว้ในไฟล์เดียว เพื่อป้องกันข้อมูลสูญหาย</p>
+      <button id="exportBackup" type="button" class="secondary">ดาวน์โหลดไฟล์สำรองข้อมูล</button>
+      <hr>
+      <h2>กู้คืนข้อมูลจากไฟล์สำรอง</h2>
+      <p class="small">เลือกไฟล์ JSON ที่เคยดาวน์โหลดไว้ ระบบจะรวมเพลงและ Setlist ที่ยังไม่มี โดยไม่เขียนทับเพลงเดิม และจะไม่ลบข้อมูลปัจจุบัน</p>
+      <input id="importBackupFile" type="file" accept=".json,application/json">
+      <button id="importBackup" type="button" class="secondary" disabled>กู้คืนข้อมูลจากไฟล์นี้</button>
+      <div id="backupStatus" class="small" role="status" aria-live="polite" style="margin-top:8px"></div>
+    </div>
   </section>
   
 </main>
@@ -153,13 +160,17 @@ let songs=[],sets=[],currentIndex=0,currentSet=null,pendingImage=null,searchCoun
 let playbackQueue=null;
 function openAyoImageDB(){return new Promise((resolve,reject)=>{if(!('indexedDB' in window)){reject(new Error('IndexedDB unavailable'));return}const req=indexedDB.open('ayo-chords-cache',1);req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains('songImages'))db.createObjectStore('songImages',{keyPath:'id'})};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||new Error('IndexedDB open failed'))})}
 function cacheSongImage(song){if(!song||!song.image)return Promise.resolve();return openAyoImageDB().then(db=>new Promise((resolve,reject)=>{const tx=db.transaction('songImages','readwrite');tx.objectStore('songImages').put({id:String(song.id),image:String(song.image)});tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{const e=tx.error||new Error('Image cache write failed');db.close();reject(e)}}))}
+function deleteCachedSongImage(id){return openAyoImageDB().then(db=>new Promise((resolve,reject)=>{const tx=db.transaction('songImages','readwrite');tx.objectStore('songImages').delete(String(id));tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{const e=tx.error||new Error('Image cache delete failed');db.close();reject(e)}}))}
 async function hydrateSongImages(){try{const db=await openAyoImageDB();await Promise.all(songs.map(song=>{if(song.image)return Promise.resolve();return new Promise(resolve=>{const tx=db.transaction('songImages','readonly');const req=tx.objectStore('songImages').get(String(song.id));req.onsuccess=()=>{if(req.result&&req.result.image)song.image=req.result.image;resolve()};req.onerror=()=>resolve()})}));db.close();renderSongs()}catch(e){console.warn('AYO image cache read:',e)}}
+function normalizeSongPart(value){return String(value||'').normalize('NFKC').toLocaleLowerCase().replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/[\s\u00A0]+/g,' ').trim().replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"')}
+function songDedupeKey(song){return normalizeSongPart(song&&song.title)+'::'+normalizeSongPart(song&&song.artist)}
+function dedupeSongs(list){const map=new Map();for(const song of list||[]){const key=songDedupeKey(song);if(!key||key==='::')continue;const old=map.get(key);if(!old){map.set(key,song);continue}const oldHasImage=!!old.image,newHasImage=!!song.image;const oldTime=Number(old.createdAt||old.id)||Number.MAX_SAFE_INTEGER,newTime=Number(song.createdAt||song.id)||Number.MAX_SAFE_INTEGER;if((newHasImage&&!oldHasImage)||(newHasImage===oldHasImage&&newTime<oldTime))map.set(key,{...old,...song,image:song.image||old.image});else if(!old.image&&song.image)old.image=song.image;}return [...map.values()]}
 function localSongMetadata(){return songs.map(({image,...song})=>song)}
 const persist=()=>{try{localStorage.setItem('ayo_songs',JSON.stringify(localSongMetadata()));localStorage.setItem('ayo_sets',JSON.stringify(sets));songs.forEach(song=>{if(song.image)cacheSongImage(song).catch(e=>console.warn('AYO image cache write:',e))});if(window.ayoCloudPersist)window.ayoCloudPersist();return true}catch(e){console.warn('AYO local metadata cache:',e);toast('บันทึกข้อมูลในเครื่องไม่สำเร็จ แต่จะยังบันทึกขึ้น Cloud');return true}};
 function toast(s){$('toast').textContent=s;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',2300)}
 function switchTab(tab){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));['library','sets','add'].forEach(x=>$(x).classList.toggle('hidden',x!==tab));if(tab==='library')renderSongs();if(tab==='sets')renderSets()}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
-function renderSongs(){let q=$('search').value.toLowerCase().trim();let filtered=songs.filter(s=>(s.title+' '+(s.artist||'')).toLowerCase().includes(q)).sort((a,b)=>(Number(b.createdAt||b.id)||0)-(Number(a.createdAt||a.id)||0));$('count').textContent=songs.length+' SONGS';$('songlist').innerHTML=filtered.length?'':'<div class="empty">ยังไม่มีเพลงในคลัง<br>กด “เพิ่มเพลง” เพื่อเริ่มต้น</div>';filtered.forEach(s=>{let wrap=document.createElement('div');wrap.className='song-swipe';let del=document.createElement('button');del.className='song-delete';del.type='button';del.textContent='ลบเพลง';del.setAttribute('aria-label','ลบ '+s.title);del.onclick=e=>{e.stopPropagation();if(!confirm('ลบเพลง “'+s.title+'” ออกจากคลังใช่ไหม?'))return;if(s.owner_uid&&window.ayoCurrentUid&&s.owner_uid!==window.ayoCurrentUid){toast('ลบได้เฉพาะเพลงที่คุณเป็นเจ้าของ');return}songs=songs.filter(x=>x.id!==s.id);sets=sets.map(st=>({...st,ids:st.ids.filter(id=>id!==s.id)}));delete searchCounts[s.id];persist();if(window.ayoCloudDeleteSong)window.ayoCloudDeleteSong(s.id);try{localStorage.setItem('ayo_search_counts',JSON.stringify(searchCounts))}catch(e){}renderSongs();renderFrequentSongs();toast('ลบเพลงออกจากคลังแล้ว')};let d=document.createElement('div');d.className='song';d.innerHTML=`<div class="thumb">${s.image?'<img style="width:100%;height:100%;object-fit:cover;border-radius:8px">':'♪'}</div><div class="grow"><div class="songname"></div><div class="artist"></div></div><div class="small">เปิด ›</div>`;d.querySelector('.songname').textContent=s.title;d.querySelector('.artist').textContent=s.artist||'ไม่ระบุศิลปิน';if(s.image)d.querySelector('img').src=s.image;let start=null,moved=false;d.addEventListener('touchstart',e=>{const t=e.touches[0];start={x:t.clientX,y:t.clientY};moved=false},{passive:true});d.addEventListener('touchmove',e=>{if(!start)return;const t=e.touches[0],dx=t.clientX-start.x,dy=t.clientY-start.y;if(Math.abs(dx)>12&&Math.abs(dx)>Math.abs(dy)){moved=true;if(dx<0)wrap.classList.add('open');else wrap.classList.remove('open')}},{passive:true});d.addEventListener('touchend',()=>{if(moved){setTimeout(()=>{moved=false},80)}start=null},{passive:true});d.onclick=()=>{if(wrap.classList.contains('open')){wrap.classList.remove('open');return}if(moved)return;document.querySelectorAll('.song-swipe.open').forEach(x=>x.classList.remove('open'));openSong(s.id)};wrap.append(del,d);$('songlist').appendChild(wrap)})}
+function renderSongs(){let q=$('search').value.toLowerCase().trim();const uniqueSongs=dedupeSongs(songs);let filtered=uniqueSongs.filter(s=>(s.title+' '+(s.artist||'')).toLowerCase().includes(q)).sort((a,b)=>(Number(b.createdAt||b.id)||0)-(Number(a.createdAt||a.id)||0));$('count').textContent=songs.length+' SONGS';$('songlist').innerHTML=filtered.length?'':'<div class="empty">ยังไม่มีเพลงในคลัง<br>กด “เพิ่มเพลง” เพื่อเริ่มต้น</div>';filtered.forEach(s=>{let wrap=document.createElement('div');wrap.className='song-swipe';let del=document.createElement('button');del.className='song-delete';del.type='button';del.textContent='ลบเพลง';del.setAttribute('aria-label','ลบ '+s.title);del.onclick=e=>{e.stopPropagation();if(!confirm('ลบเพลง “'+s.title+'” ออกจากคลังใช่ไหม?'))return;if(s.owner_uid&&window.ayoCurrentUid&&s.owner_uid!==window.ayoCurrentUid){toast('ลบได้เฉพาะเพลงที่คุณเป็นเจ้าของ');return}songs=songs.filter(x=>x.id!==s.id);sets=sets.map(st=>({...st,ids:st.ids.filter(id=>id!==s.id)}));delete searchCounts[s.id];deleteCachedSongImage(s.id).catch(e=>console.warn('AYO image cache delete:',e));persist();if(window.ayoCloudDeleteSong)window.ayoCloudDeleteSong(s.id);try{localStorage.setItem('ayo_search_counts',JSON.stringify(searchCounts))}catch(e){}renderSongs();renderFrequentSongs();toast('ลบเพลงออกจากคลังแล้ว')};let d=document.createElement('div');d.className='song';d.innerHTML=`<div class="thumb">${s.image?'<img style="width:100%;height:100%;object-fit:cover;border-radius:8px">':'♪'}</div><div class="grow"><div class="songname"></div><div class="artist"></div></div><div class="small">เปิด ›</div>`;d.querySelector('.songname').textContent=s.title;d.querySelector('.artist').textContent=s.artist||'ไม่ระบุศิลปิน';if(s.image)d.querySelector('img').src=s.image;let start=null,moved=false;d.addEventListener('touchstart',e=>{const t=e.touches[0];start={x:t.clientX,y:t.clientY};moved=false},{passive:true});d.addEventListener('touchmove',e=>{if(!start)return;const t=e.touches[0],dx=t.clientX-start.x,dy=t.clientY-start.y;if(Math.abs(dx)>12&&Math.abs(dx)>Math.abs(dy)){moved=true;if(dx<0)wrap.classList.add('open');else wrap.classList.remove('open')}},{passive:true});d.addEventListener('touchend',()=>{if(moved){setTimeout(()=>{moved=false},80)}start=null},{passive:true});d.onclick=()=>{if(wrap.classList.contains('open')){wrap.classList.remove('open');return}if(moved)return;document.querySelectorAll('.song-swipe.open').forEach(x=>x.classList.remove('open'));openSong(s.id)};wrap.append(del,d);$('songlist').appendChild(wrap)})}
 $('search').addEventListener('input',renderSongs);
 // Voice search: provide immediate feedback, diagnose browser/security limits,
 // and fall back to iPhone keyboard dictation when Web Speech is unavailable.
@@ -182,14 +193,10 @@ function setListening(active){
  listening=active;$('voiceSearch').classList.toggle('listening',active);
  $('voiceSearch').textContent=active?'⏺':'🎙️';
  $('voiceSearch').setAttribute('aria-pressed',String(active));
- $('voiceStatus').classList.toggle('active',active);
- $('voiceStatus').classList.toggle('notice',false);$('voiceStatus').classList.toggle('error',false);
- if(active)voiceMessage('กำลังฟังอยู่','พูดชื่อเพลงหรือชื่อศิลปินได้เลย','notice');
-}
-function useKeyboardDictation(reason){
- setListening(false);
- voiceMessage('ใช้ไมโครโฟนบนคีย์บอร์ด iPhone',reason+' แตะช่องค้นหา แล้วแตะรูปไมโครโฟนบนคีย์บอร์ดเพื่อพูดชื่อเพลงหรือศิลปิน','notice');
- $('search').focus();
+ $('voiceStatus').classList.toggle('active',active); $('voiceStatus').classList.toggle('notice',false);$('voiceStatus').classList.toggle('error',false);
+ if(active)voiceMessage('กำลังฟังอยู่','พูดชื่อเพลงหรือชื่อศิลปินได้เลย','notice');}
+function useKeyboardDictation(reason){ setListening(false);
+ voiceMessage('ใช้ไมโครโฟนบนคีย์บอร์ด iPhone',reason+' แตะช่องค้นหา แล้วแตะรูปไมโครโฟนบนคีย์บอร์ดเพื่อพูดชื่อเพลงหรือศิลปิน','notice'); $('search').focus();
 }
 if(SpeechRecognition){
  try{
@@ -225,6 +232,93 @@ $('voiceSearch').onclick=()=>{
  try{recognition.start();}catch(e){voiceMessage('เริ่มไมโครโฟนไม่ได้','ลองแตะอีกครั้ง หรือใช้ไมโครโฟนบนคีย์บอร์ด iPhone','error');}
 };
 
+async function exportBackup(){
+ const button=$('exportBackup'),status=$('backupStatus');
+ if(button.disabled)return;
+ button.disabled=true;status.textContent='กำลังเตรียมไฟล์สำรองข้อมูล…';
+ try{
+  await hydrateSongImages();
+  const payload={format:'ayo-chords-backup',version:1,createdAt:new Date().toISOString(),songs:songs.map(song=>({...song})),sets:sets.map(st=>({...st,ids:[...(st.ids||[])]})),searchCounts:{...searchCounts}};
+  const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
+  const url=URL.createObjectURL(blob),link=document.createElement('a');
+  const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  link.href=url;link.download='ayo-chords-backup-'+stamp+'.json';
+  document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  status.textContent='สร้างไฟล์สำรองข้อมูลเรียบร้อยแล้ว กรุณาเก็บไฟล์ไว้ในที่ปลอดภัย';
+ }catch(e){console.error('AYO backup export:',e);status.textContent='สำรองข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';}
+ finally{button.disabled=false;}
+}
+
+$('exportBackup').addEventListener('click',exportBackup);
+const backupFileInput=$('importBackupFile'),importBackupButton=$('importBackup');
+backupFileInput.addEventListener('change',()=>{
+ const file=backupFileInput.files&&backupFileInput.files[0];
+ importBackupButton.disabled=!file;
+ $('backupStatus').textContent=file?'เลือกไฟล์: '+file.name:'';
+});
+async function importBackup(){
+ const file=backupFileInput.files&&backupFileInput.files[0],status=$('backupStatus');
+ if(!file||importBackupButton.disabled)return;
+ if(file.size>50*1024*1024){status.textContent='ไฟล์ใหญ่เกิน 50 MB กรุณาเลือกไฟล์สำรองที่เล็กกว่า';return}
+ importBackupButton.disabled=true;status.textContent='กำลังตรวจสอบไฟล์สำรอง…';
+ try{
+  const payload=JSON.parse(await file.text());
+  if(!payload||payload.format!=='ayo-chords-backup'||payload.version!==1||!Array.isArray(payload.songs)||!Array.isArray(payload.sets)||!payload.searchCounts||typeof payload.searchCounts!=='object'||Array.isArray(payload.searchCounts))throw new Error('รูปแบบไฟล์สำรองไม่ถูกต้องหรือไม่รองรับ');
+  if(payload.songs.length>10000||payload.sets.length>1000)throw new Error('จำนวนข้อมูลในไฟล์เกินขีดจำกัดที่รองรับ');
+  const seen=new Set();
+  const incoming=payload.songs.map((song,i)=>{
+   if(!song||typeof song!=='object'||Array.isArray(song)||song.id==null||!String(song.id).trim()||typeof song.title!=='string'||!song.title.trim())throw new Error('ข้อมูลเพลงลำดับที่ '+(i+1)+' ไม่สมบูรณ์');
+   const id=String(song.id);if(seen.has(id))throw new Error('พบรหัสเพลงซ้ำในไฟล์สำรอง: '+id);seen.add(id);
+   if(song.image!=null&&(typeof song.image!=='string'||song.image.length>1200000))throw new Error('รูปคอร์ดของเพลง '+song.title+' มีข้อมูลไม่ถูกต้องหรือใหญ่เกินไป');
+   return {id,title:song.title.trim(),artist:typeof song.artist==='string'?song.artist:'',image:typeof song.image==='string'?song.image:null,createdAt:Number(song.createdAt)||Date.now()};
+  });
+  const incomingSets=payload.sets.map((st,i)=>{
+   if(!st||typeof st!=='object'||typeof st.name!=='string'||!st.name.trim()||!Array.isArray(st.ids))throw new Error('ข้อมูล Setlist ลำดับที่ '+(i+1)+' ไม่สมบูรณ์');
+   return {id:st.id==null?'':String(st.id),name:st.name.trim(),ids:st.ids.filter(id=>id!=null).map(String)};
+  });
+  const importedSearch={};
+  Object.entries(payload.searchCounts).forEach(([key,value])=>{if(key&&Number.isFinite(Number(value))&&Number(value)>=0)importedSearch[key]=Math.floor(Number(value))});
+  const existingById=new Map(songs.map(song=>[String(song.id),song]));
+  const toAdd=incoming.filter(song=>!existingById.has(String(song.id)));
+  const imageRepairs=incoming.filter(song=>song.image&&existingById.has(String(song.id))&&!existingById.get(String(song.id)).image);
+  const existingSetIds=new Set(sets.map(st=>String(st.id)));
+  const existingSetNames=new Set(sets.map(st=>String(st.name||'').toLowerCase()));
+  const setAdds=[];
+  incomingSets.forEach((st,i)=>{
+   if(existingSetIds.has(st.id)||existingSetNames.has(st.name.toLowerCase()))return;
+   let id=st.id||('restore-'+Date.now()+'-'+i);
+   if(existingSetIds.has(id))id='restore-'+Date.now()+'-'+i;
+   existingSetIds.add(id);existingSetNames.add(st.name.toLowerCase());   setAdds.push({id,name:st.name,ids:st.ids});
+  });
+  if(!toAdd.length&&!imageRepairs.length&&!setAdds.length&&!Object.keys(importedSearch).length){status.textContent='ไฟล์ถูกต้อง แต่ไม่มีข้อมูลใหม่ให้กู้คืน';return}  if(!confirm('พบเพลงใหม่ '+toAdd.length+' เพลง, รูปคอร์ดที่กู้คืนให้เพลงเดิม '+imageRepairs.length+' รูป และ Setlist ใหม่ '+setAdds.length+' ชุด ต้องการรวมข้อมูลหรือไม่? ชื่อเพลงและข้อมูลเดิมจะไม่ถูกเขียนทับ'))return;
+  let saved=0,failed=0;
+  for(const song of toAdd){   songs.push(song);
+   if(song.image)await cacheSongImage(song).catch(()=>{});
+   if(window.ayoCloudSaveSong){const ok=await window.ayoCloudSaveSong({...song});if(ok===false){failed++;}else{saved++;}}   else saved++;
+  }
+  for(const repair of imageRepairs){
+   const current=existingById.get(String(repair.id));
+   current.image=repair.image;
+   await cacheSongImage(current).catch(()=>{});
+   if(current.owner_uid&&current.owner_uid===window.ayoCurrentUid&&window.ayoCloudSaveSong){
+    const ok=await window.ayoCloudSaveSong({...current});
+    if(ok===false)failed++;
+   }
+  }
+  sets.push(...setAdds);
+  Object.entries(importedSearch).forEach(([key,value])=>{searchCounts[key]=Math.max(Number(searchCounts[key])||0,value)});
+  localStorage.setItem('ayo_songs',JSON.stringify(localSongMetadata()));
+  localStorage.setItem('ayo_sets',JSON.stringify(sets));
+  localStorage.setItem('ayo_search_counts',JSON.stringify(searchCounts));
+  if(window.ayoCloudPersist&&setAdds.length)await window.ayoCloudPersist();
+  if(window.ayoCloudSaveSearch&&Object.keys(importedSearch).length)await window.ayoCloudSaveSearch(searchCounts);
+  renderSongs();renderSets();renderFrequentSongs();
+  status.textContent='กู้คืนเสร็จแล้ว: เพิ่มเพลง '+toAdd.length+' เพลง, เติมรูปให้เพลงเดิม '+imageRepairs.length+' รูป, Setlist '+setAdds.length+' ชุด'+(failed?' · ซิงค์ Cloud ไม่สำเร็จ '+failed+' รายการ':'')+' · ไม่เขียนทับชื่อหรือข้อมูลเพลงเดิม';
+ }catch(e){console.error('AYO backup import:',e);status.textContent='กู้คืนไม่สำเร็จ: '+(e.message||'ไฟล์ไม่ถูกต้อง');}
+ finally{importBackupButton.disabled=!(backupFileInput.files&&backupFileInput.files[0]);}
+}
+importBackupButton.addEventListener('click',importBackup);
 function resetForm(){ $('songTitle').value='';$('songArtist').value='';$('songImage').value='';$('editId').value='';pendingImage=null;$('previewWrap').classList.add('hidden');$('formTitle').textContent='เพิ่มเพลงใหม่';$('saveSong').textContent='บันทึกเพลง'}
 $('clearForm').onclick=resetForm;
 $('songImage').onchange=e=>{
@@ -260,7 +354,7 @@ $('songImage').onchange=e=>{
  };reader.readAsDataURL(f);
 };
 function showUploadStatus(stage,progress,hint){const box=$('uploadStatus');box.classList.remove('hidden');$('uploadStatusText').textContent=stage;$('uploadProgress').style.width=progress+'%';$('uploadStatusHint').textContent=hint||'กรุณาอย่าปิดแอประหว่างบันทึก';}
-$('saveSong').onclick=async()=>{const btn=$('saveSong');if(btn.disabled)return;let title=$('songTitle').value.trim();if(!title){toast('กรุณาใส่ชื่อเพลง');return}let id=$('editId').value;let old=songs.find(s=>s.id===id);let now=Date.now();let s={id:id||String(now),createdAt:old?(old.createdAt||Number(old.id)||now):now,title,artist:$('songArtist').value.trim(),image:pendingImage||(old?old.image:null)};if(old){if(old.owner_uid&&window.ayoCurrentUid&&old.owner_uid!==window.ayoCurrentUid){toast('แก้ไขได้เฉพาะเพลงที่คุณเป็นเจ้าของ');return}s.owner_uid=old.owner_uid;songs=songs.map(x=>x.id===id?s:x)}else{if(window.ayoCurrentUid)s.owner_uid=window.ayoCurrentUid;songs.push(s)}btn.disabled=true;showUploadStatus('กำลังเตรียมข้อมูลเพลง…',15,'กำลังตรวจสอบและบันทึกข้อมูล');try{persist();showUploadStatus('กำลังอัปโหลดเพลงและรูปภาพขึ้น Cloud…',45,'กรุณาอย่าปิดแอปหรือออกจากหน้านี้จนกว่าจะเสร็จ');let cloudResult=null;if(window.ayoCloudSaveSong)cloudResult=await window.ayoCloudSaveSong(s);if(cloudResult===false){showUploadStatus('อัปโหลดไม่สำเร็จ',0,'ข้อมูลยังไม่ยืนยันบน Cloud กรุณาตรวจอินเทอร์เน็ตและลองใหม่');toast('อัปโหลด Cloud ไม่สำเร็จ');return}showUploadStatus('บันทึกเสร็จสมบูรณ์',100,'ข้อมูลเพลงและรูปภาพบันทึกเรียบร้อยแล้ว');resetForm();switchTab('library');toast(old?'บันทึกการแก้ไขแล้ว':'เพิ่มเพลงและอัปโหลดสำเร็จ');setTimeout(()=> $('uploadStatus').classList.add('hidden'),2500);}catch(e){console.error(e);showUploadStatus('เกิดข้อผิดพลาดในการอัปโหลด',0,'กรุณาลองใหม่อีกครั้ง');toast('อัปโหลดไม่สำเร็จ');}finally{btn.disabled=false;}};
+$('saveSong').onclick=async()=>{const btn=$('saveSong');if(btn.disabled)return;let title=$('songTitle').value.trim();let artist=$('songArtist').value.trim();if(!title){toast('กรุณาใส่ชื่อเพลง');return}let id=$('editId').value;let old=songs.find(s=>s.id===id);let now=Date.now();let s={id:id||String(now),createdAt:old?(old.createdAt||Number(old.id)||now):now,title,artist,image:pendingImage||(old?old.image:null)};if(old){if(old.owner_uid&&window.ayoCurrentUid&&old.owner_uid!==window.ayoCurrentUid){toast('แก้ไขได้เฉพาะเพลงที่คุณเป็นเจ้าของ');return}}else{const duplicate=songs.find(x=>songDedupeKey(x)===songDedupeKey(s));if(duplicate){toast('มีเพลงชื่อเดียวกันและศิลปินเดียวกันอยู่แล้ว ไม่เพิ่มรายการซ้ำ');return}if(window.ayoCurrentUid)s.owner_uid=window.ayoCurrentUid;}const previousSongs=songs.slice();if(old)songs=songs.map(x=>x.id===id?s:x);else songs.push(s);btn.disabled=true;showUploadStatus('กำลังเตรียมข้อมูลเพลง…',15,'กำลังตรวจสอบชื่อเพลงและศิลปิน');try{showUploadStatus('กำลังอัปโหลดเพลงและรูปภาพขึ้น Cloud…',45,'กรุณาอย่าปิดแอปหรือออกจากหน้านี้จนกว่าจะเสร็จ');let cloudResult=null;if(window.ayoCloudSaveSong)cloudResult=await window.ayoCloudSaveSong(s);if(cloudResult===false){songs=previousSongs;renderSongs();showUploadStatus('ไม่สามารถบันทึกเพลงได้',0,'พบเพลงซ้ำหรือ Cloud ปฏิเสธการบันทึก ข้อมูลเดิมยังคงอยู่');return}persist();if(cloudResult===null){showUploadStatus('บันทึกในเครื่องแล้ว',100,'ยังไม่ได้ยืนยันการบันทึกบน Cloud กรุณาเชื่อมต่อและซิงค์อีกครั้ง');resetForm();switchTab('library');toast('บันทึกในเครื่องแล้ว · Cloud ยังไม่ยืนยัน');}else{showUploadStatus('บันทึกเสร็จสมบูรณ์',100,'ข้อมูลเพลงและรูปภาพบันทึกเรียบร้อยแล้ว');resetForm();switchTab('library');toast(old?'บันทึกการแก้ไขแล้ว':'เพิ่มเพลงและอัปโหลดสำเร็จ');}setTimeout(()=> $('uploadStatus').classList.add('hidden'),4000);}catch(e){songs=previousSongs;renderSongs();console.error(e);showUploadStatus('เกิดข้อผิดพลาดในการอัปโหลด',0,'กรุณาลองใหม่อีกครั้ง');toast('อัปโหลดไม่สำเร็จ');}finally{btn.disabled=false;}};
 function editSong(id){let s=songs.find(x=>x.id===id);if(!s)return;$('songTitle').value=s.title;$('songArtist').value=s.artist||'';$('editId').value=id;pendingImage=null;if(s.image){$('preview').src=s.image;$('previewWrap').classList.remove('hidden')}else $('previewWrap').classList.add('hidden');$('formTitle').textContent='แก้ไขเพลง';$('saveSong').textContent='บันทึกการแก้ไข';switchTab('add')}
 let zoom=1,panX=0,panY=0,pointers=new Map(),gestureStart=null,lastTap=0;
 function applyZoom(){const img=$('playerImage');img.style.transform=`translate3d(${panX}px,${panY}px,0) scale(${zoom})`;img.style.setProperty('--zoom',zoom);}
@@ -282,7 +376,7 @@ area.addEventListener('pointerdown',e=>{area.setPointerCapture?.(e.pointerId);po
 area.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===2&&gestureStart?.pinch){const pts=[...pointers.values()];const d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);zoom=Math.max(1,Math.min(5,gestureStart.zoom*d/Math.max(1,gestureStart.distance)));applyZoom()}else if(pointers.size===1&&zoom>1&&gestureStart&&!gestureStart.pinch){panX=gestureStart.panX+(e.clientX-gestureStart.x);panY=gestureStart.panY+(e.clientY-gestureStart.y);applyZoom()}},{passive:true});
 function endPointer(e){pointers.delete(e.pointerId);if(pointers.size<2)area.classList.remove('gesture-active');if(pointers.size===0&&gestureStart&&!gestureStart.pinch){const dx=e.clientX-gestureStart.x,dy=e.clientY-gestureStart.y;if(zoom===1&&Math.abs(dy)>65&&Math.abs(dy)>Math.abs(dx)*1.2){if(dy<0){openRandomDrawer()}else if($('randomDrawer').classList.contains('open')){closeRandomDrawer()}else{closePlayer()}}else if(zoom===1&&Math.abs(dx)>65&&Math.abs(dx)>Math.abs(dy)*1.2){move(dx<0?-1:1)}else if(Math.abs(dx)<12&&Math.abs(dy)<12&&Date.now()-gestureStart.time<250){/* tap handled by click */}}if(pointers.size===1){const p=[...pointers.values()][0];gestureStart={x:p.x,y:p.y,panX,panY,time:Date.now()};}if(pointers.size===0)gestureStart=null;}
 area.addEventListener('pointerup',endPointer);area.addEventListener('pointercancel',endPointer);
-$('createSet').onclick=async()=>{if(window.ayoCurrentUid&&!cloudSetsReady){toast('กำลังโหลด Setlist จาก Cloud กรุณารอสักครู่');return}let name=$('setName').value.trim();if(!name){toast('ใส่ชื่อ Setlist ก่อนครับ');return}if(sets.some(st=>st.name.toLowerCase()===name.toLowerCase())){toast('มีชื่อ Setlist นี้แล้ว');return}sets.push({id:String(Date.now()),name,ids:[]});$('setName').value='';if(!persist())return;renderSets();const ok=window.ayoCloudPersist?await window.ayoCloudPersist():true;toast(ok===false?'สร้างในเครื่องแล้ว แต่ซิงค์คลาวด์ไม่สำเร็จ':'สร้าง Setlist แล้ว')};
+let creatingSet=false;$('createSet').onclick=async()=>{const button=$('createSet');if(creatingSet)return;if(window.ayoCurrentUid&&!cloudSetsReady){toast('กำลังโหลด Setlist จาก Cloud กรุณารอสักครู่');return}const name=$('setName').value.trim();if(!name){toast('ใส่ชื่อ Setlist ก่อนครับ');return}if(sets.some(st=>String(st.name||'').trim().toLowerCase()===name.toLowerCase())){toast('มีชื่อ Setlist นี้แล้ว');return}creatingSet=true;button.disabled=true;const id=window.crypto&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2,8);sets.push({id,name,ids:[]});$('setName').value='';renderSets();let localSaved=true;try{localStorage.setItem('ayo_sets',JSON.stringify(sets))}catch(e){localSaved=false;console.warn('AYO Setlist local save:',e)}try{const ok=window.ayoCloudPersist?await window.ayoCloudPersist():true;if(ok===false){toast(localSaved?'สร้าง Setlist ในเครื่องแล้ว แต่ซิงค์ Cloud ไม่สำเร็จ':'บันทึก Setlist ไม่สำเร็จ กรุณาลองอีกครั้ง')}else{toast('สร้าง Setlist แล้ว')}}catch(e){console.error('AYO Setlist create:',e);toast(localSaved?'สร้างในเครื่องแล้ว แต่เชื่อมต่อ Cloud ไม่สำเร็จ':'สร้าง Setlist ไม่สำเร็จ')}finally{creatingSet=false;button.disabled=false}};
 $('setSearch').addEventListener('input',renderSets);
 function renderSets(){
  const root=$('setlists');root.innerHTML='';const q=($('setSearch')?.value||'').trim().toLowerCase();
@@ -291,20 +385,16 @@ function renderSets(){
  visible.forEach(st=>{
   const card=document.createElement('div');card.className='set-card';
   const head=document.createElement('div');head.className='set-card-head';
-  const open=document.createElement('button');open.className='set-open';open.type='button';open.textContent=st.name;
-  const count=document.createElement('span');count.className='set-count';count.textContent=st.ids.length+' เพลง';
+  const open=document.createElement('button');open.className='set-open';open.type='button';open.textContent=st.name;  const count=document.createElement('span');count.className='set-count';count.textContent=st.ids.length+' เพลง';
   const edit=document.createElement('button');edit.className='secondary';edit.type='button';edit.textContent='จัดเพลง';
   const play=document.createElement('button');play.type='button';play.textContent='▶';play.title='เล่น Setlist';play.onclick=()=>playSet(st,0);
-  head.append(open,count,edit,play);card.appendChild(head);
-  const editor=document.createElement('div');editor.className='set-editor hidden';
+  head.append(open,count,edit,play);card.appendChild(head);  const editor=document.createElement('div');editor.className='set-editor hidden';
   const searchLabel=document.createElement('label');searchLabel.textContent='ค้นหาเพลงเพื่อเพิ่มเข้า Setlist';editor.appendChild(searchLabel);
   const find=document.createElement('input');find.type='search';find.placeholder='พิมพ์ชื่อเพลงหรือศิลปิน…';find.autocomplete='off';editor.appendChild(find);
-  const results=document.createElement('div');results.className='set-add-results';editor.appendChild(results);
-  const rows=document.createElement('div');editor.appendChild(rows);
+  const results=document.createElement('div');results.className='set-add-results';editor.appendChild(results);  const rows=document.createElement('div');editor.appendChild(rows);
   function renderAddResults(){const term=find.value.trim().toLowerCase();results.innerHTML='';if(!term){return}const matches=songs.filter(song=>(song.title+' '+(song.artist||'')).toLowerCase().includes(term)&&!st.ids.includes(song.id)).slice(0,30);if(!matches.length){return}matches.forEach(song=>{const row=document.createElement('div');row.className='set-add-result';const label=document.createElement('span');label.textContent=song.title+(song.artist?' · '+song.artist:'');const add=document.createElement('button');add.type='button';add.textContent='＋ เพิ่ม';add.onclick=()=>{st.ids.push(song.id);renderEditorRows();renderAddResults();count.textContent=st.ids.length+' เพลง'};row.append(label,add);results.appendChild(row)})}
  function renderEditorRows(){rows.innerHTML='';const list=st.ids.map(id=>songs.find(song=>song.id===id)).filter(Boolean);if(!list.length){return}list.forEach((song,i)=>{const row=document.createElement('div');row.className='setrow';const title=document.createElement('button');title.type='button';title.className='set-song-title';title.textContent=(i+1)+'. '+song.title;title.setAttribute('aria-label','เปิดคอร์ดเพลง '+song.title+' และเล่นต่อในลำดับ Setlist');title.onclick=()=>playSet(st,i);const order=document.createElement('div');order.className='set-order';const up=document.createElement('button');up.className='secondary';up.type='button';up.textContent='↑';up.disabled=i===0;up.onclick=()=>{[st.ids[i-1],st.ids[i]]=[st.ids[i],st.ids[i-1]];renderEditorRows()};const down=document.createElement('button');down.className='secondary';down.type='button';down.textContent='↓';down.disabled=i===list.length-1;down.onclick=()=>{[st.ids[i+1],st.ids[i]]=[st.ids[i],st.ids[i+1]];renderEditorRows()};order.append(up,down);const remove=document.createElement('button');remove.className='danger';remove.type='button';remove.textContent='ลบ';remove.onclick=()=>{st.ids=st.ids.filter(id=>id!==song.id);renderEditorRows();renderAddResults();count.textContent=st.ids.length+' เพลง'};row.append(title,order,remove);rows.appendChild(row)})}
- find.addEventListener('input',renderAddResults);
- const actions=document.createElement('div');actions.className='set-save-row';const save=document.createElement('button');save.type='button';save.textContent='บันทึก Setlist';save.onclick=async()=>{if(!persist())return;save.disabled=true;const ok=window.ayoCloudPersist?await window.ayoCloudPersist():true;save.disabled=false;editor.classList.add('hidden');count.textContent=st.ids.length+' เพลง';toast(ok===false?'บันทึกในเครื่องแล้ว แต่ซิงค์ Setlist ไม่สำเร็จ':'บันทึก Setlist แล้ว')};const cancel=document.createElement('button');cancel.className='secondary';cancel.type='button';cancel.textContent='ยกเลิก';cancel.onclick=()=>{const saved=read('ayo_sets',sets);const original=saved.find(x=>x.id===st.id);if(original)st.ids=[...original.ids];editor.classList.add('hidden');renderSets()};actions.append(save,cancel);editor.appendChild(actions);
+ find.addEventListener('input',renderAddResults); const actions=document.createElement('div');actions.className='set-save-row';const save=document.createElement('button');save.type='button';save.textContent='บันทึก Setlist';save.onclick=async()=>{if(!persist())return;save.disabled=true;const ok=window.ayoCloudPersist?await window.ayoCloudPersist():true;save.disabled=false;editor.classList.add('hidden');count.textContent=st.ids.length+' เพลง';toast(ok===false?'บันทึกในเครื่องแล้ว แต่ซิงค์ Setlist ไม่สำเร็จ':'บันทึก Setlist แล้ว')};const cancel=document.createElement('button');cancel.className='secondary';cancel.type='button';cancel.textContent='ยกเลิก';cancel.onclick=()=>{const saved=read('ayo_sets',sets);const original=saved.find(x=>x.id===st.id);if(original)st.ids=[...original.ids];editor.classList.add('hidden');renderSets()};actions.append(save,cancel);editor.appendChild(actions);
  renderAddResults();renderEditorRows();
  const toggle=()=>{const wasOpen=!editor.classList.contains('hidden');document.querySelectorAll('.set-editor').forEach(el=>el.classList.add('hidden'));if(!wasOpen){editor.classList.remove('hidden');find.focus({preventScroll:true})}};
  open.onclick=toggle;edit.onclick=toggle;
@@ -332,12 +422,65 @@ songs=read('ayo_songs',[]);sets=read('ayo_sets',[]);renderSongs();renderSets();h
  $("logoutBtn").onclick=()=>{if(auth&&confirm("ต้องการออกจากระบบ Ayo Chords หรือไม่?"))auth.signOut().catch(error);};
  function stopCloudListeners(){[stopPublic,stopSets,stopSearch].forEach(fn=>{try{if(fn)fn()}catch(e){}});stopPublic=stopSets=stopSearch=null;activeCloudUid=null;cloudSetsReady=false;cloudSearchReady=false;}
  const cloudError=e=>{console.error('AYO Firestore:',e);toast('ซิงค์คลาวด์ไม่สำเร็จ: '+(e.code||e.message||'unknown'));};
- async function saveCloudSong(song){if(!db||!auth.currentUser)return null;const uid=auth.currentUser.uid;const ref=db.collection('public_songs').doc(String(song.id));const clean={title:String(song.title||''),artist:String(song.artist||''),owner_uid:uid};if(song.image)clean.image=String(song.image);try{const snap=await ref.get();if(!snap.exists){clean.created_at=firebase.firestore.FieldValue.serverTimestamp();await ref.set(clean);song.owner_uid=uid;}else if(snap.data().owner_uid===uid){clean.updated_at=firebase.firestore.FieldValue.serverTimestamp();await ref.set(clean,{merge:true});song.owner_uid=uid;}else{song.owner_uid=snap.data().owner_uid;toast('เพลงนี้เป็นของผู้ใช้อื่น จึงแก้ไขไม่ได้');return false;}try{localStorage.setItem('ayo_songs',JSON.stringify(localSongMetadata()))}catch(e){console.warn('AYO local metadata cache:',e)}if(song.image)await cacheSongImage(song).catch(e=>console.warn('AYO image cache write:',e));return true;}catch(e){cloudError(e);return false}}
- async function deleteCloudSong(id){if(!db||!auth.currentUser)return;try{const ref=db.collection('public_songs').doc(String(id));const snap=await ref.get();if(snap.exists&&snap.data().owner_uid===auth.currentUser.uid)await ref.delete();}catch(e){cloudError(e)}}
+ async function songUniquenessId(song){const key=songDedupeKey(song);const bytes=new TextEncoder().encode(key);const digest=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('')}
+ async function saveCloudSong(song){
+  if(!db||!auth.currentUser)return null;
+  const uid=auth.currentUser.uid,id=String(song.id),songRef=db.collection('public_songs').doc(id),key=songDedupeKey(song);
+  const clean={title:String(song.title||'').trim(),artist:String(song.artist||'').trim(),title_key:normalizeSongPart(song.title),artist_key:normalizeSongPart(song.artist),dedupe_key:key,owner_uid:uid};
+  if(song.image)clean.image=String(song.image);
+  try{
+   // Legacy audit: older records may not contain dedupe_key, so compare normalized fields before reserving.
+   const allCloudSongs=await db.collection('public_songs').get();
+   const legacyDuplicate=allCloudSongs.docs.find(d=>{if(d.id===id)return false;const data=d.data()||{};return songDedupeKey({title:data.title,artist:data.artist})===key;});
+   if(legacyDuplicate){toast('มีเพลงชื่อนี้และศิลปินนี้อยู่ใน Cloud แล้ว ระบบป้องกันการเพิ่มเพลงซ้ำ');return false;}
+   const lockId=await songUniquenessId(song),lockRef=db.collection('song_uniqueness').doc(lockId);clean.dedupe_lock_id=lockId;
+   const saved=await db.runTransaction(async tx=>{
+    const lockSnap=await tx.get(lockRef);
+    const songSnap=await tx.get(songRef);
+    if(songSnap.exists&&songSnap.data().owner_uid!==uid){return false;}
+    if(lockSnap.exists&&String(lockSnap.data().song_id)!==id){return false;}
+    let oldLockRef=null,oldLockSnap=null;
+    if(songSnap.exists){
+     const previous=songSnap.data()||{};
+     const previousKey=songDedupeKey({title:previous.title,artist:previous.artist});
+     if(previousKey&&previousKey!==key){
+      const previousLockId=await songUniquenessId({title:previous.title,artist:previous.artist});
+      oldLockRef=db.collection('song_uniqueness').doc(previousLockId);      oldLockSnap=await tx.get(oldLockRef);
+     }
+    }
+    if(!songSnap.exists)clean.created_at=firebase.firestore.FieldValue.serverTimestamp();
+    else clean.updated_at=firebase.firestore.FieldValue.serverTimestamp();    tx.set(lockRef,{song_id:id,owner_uid:uid,title:clean.title,artist:clean.artist,dedupe_key:key,updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    tx.set(songRef,clean,{merge:true});
+    if(oldLockRef&&oldLockSnap&&oldLockSnap.exists&&String(oldLockSnap.data().song_id)===id&&oldLockSnap.data().owner_uid===uid)tx.delete(oldLockRef);
+    return true;
+   });   if(!saved){toast('เพลงนี้ซ้ำหรือเป็นของผู้ใช้อื่น จึงไม่สามารถบันทึกได้');return false;}
+   song.owner_uid=uid;
+   try{localStorage.setItem('ayo_songs',JSON.stringify(localSongMetadata()))}catch(e){console.warn('AYO local metadata cache:',e)}
+   if(song.image)await cacheSongImage(song).catch(e=>console.warn('AYO image cache write:',e));
+   return true;
+  }catch(e){cloudError(e);return false}
+ }
+ async function deleteCloudSong(id){
+  if(!db||!auth.currentUser)return false;
+  const uid=auth.currentUser.uid,ref=db.collection('public_songs').doc(String(id));
+  try{
+   return await db.runTransaction(async tx=>{
+    const snap=await tx.get(ref);
+    if(!snap.exists||snap.data().owner_uid!==uid)return false;
+    const data=snap.data()||{};
+    const lockId=data.dedupe_lock_id||await songUniquenessId({title:data.title,artist:data.artist});
+    const lockRef=db.collection('song_uniqueness').doc(lockId);
+    const lockSnap=await tx.get(lockRef);
+    if(lockSnap.exists&&String(lockSnap.data().song_id)===String(id)&&lockSnap.data().owner_uid===uid)tx.delete(lockRef);
+    tx.delete(ref);
+    return true;
+   });
+  }catch(e){cloudError(e);return false}
+ }
  let cloudSetQueue=Promise.resolve(),activeCloudUid=null,cloudSetsReady=false,cloudSearchReady=false;async function saveCloudSets(){if(!db||!auth.currentUser||!cloudSetsReady||activeCloudUid!==auth.currentUser.uid)return false;const uid=auth.currentUser.uid;const snapshot=sets.map(st=>({id:String(st.id),name:String(st.name||''),ids:Array.isArray(st.ids)?[...st.ids]:[]}));cloudSetQueue=cloudSetQueue.then(async()=>{const col=db.collection('users').doc(uid).collection('setlists');const batch=db.batch();snapshot.forEach(st=>batch.set(col.doc(st.id),{name:st.name,ids:st.ids,updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}));if(snapshot.length)await batch.commit();return true}).catch(e=>{cloudError(e);return false});return cloudSetQueue}async function deleteCloudSet(id){if(!db||!auth.currentUser||!cloudSetsReady||activeCloudUid!==auth.currentUser.uid)return false;const uid=auth.currentUser.uid;cloudSetQueue=cloudSetQueue.then(async()=>{await db.collection('users').doc(uid).collection('setlists').doc(String(id)).delete();return true}).catch(e=>{cloudError(e);return false});return cloudSetQueue}
  async function saveCloudSearch(counts){if(!db||!auth.currentUser||!cloudSearchReady||activeCloudUid!==auth.currentUser.uid)return;try{await db.collection('users').doc(auth.currentUser.uid).collection('private').doc('search_history').set({counts:counts,updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})}catch(e){cloudError(e)}}
  function startCloud(user){stopCloudListeners();activeCloudUid=user.uid;cloudSetsReady=false;cloudSearchReady=false;sets=[];searchCounts={};try{localStorage.setItem('ayo_sets','[]');localStorage.setItem('ayo_search_counts','{}')}catch(e){}renderSets();window.ayoCurrentUid=user.uid;
-  stopPublic=db.collection('public_songs').onSnapshot(async snap=>{if(activeCloudUid!==user.uid)return;const remote=snap.docs.map(d=>{const x=d.data();return{id:d.id,title:x.title||'',artist:x.artist||'',owner_uid:x.owner_uid||'',image:x.image||null,createdAt:x.created_at&&x.created_at.toMillis?x.created_at.toMillis():0}});const remoteIds=new Set(remote.map(x=>x.id));const localById=new Map(songs.map(x=>[String(x.id),x]));songs=remote.map(x=>({...x,image:x.image||localById.get(x.id)?.image||null}));for(const remoteSong of remote){const local=localById.get(remoteSong.id);if(!remoteSong.image&&local&&local.image&&remoteSong.owner_uid===user.uid){saveCloudSong({...remoteSong,image:local.image});}}for(const local of localById.values()){if(!remoteIds.has(String(local.id))){songs.push(local);saveCloudSong(local)}}try{localStorage.setItem('ayo_songs',JSON.stringify(localSongMetadata()))}catch(e){}songs.forEach(song=>{if(song.image)cacheSongImage(song).catch(e=>console.warn('AYO image cache write:',e))});renderSongs();renderSets();},cloudError);
+  stopPublic=db.collection('public_songs').onSnapshot(async snap=>{if(activeCloudUid!==user.uid)return;const remote=snap.docs.map(d=>{const x=d.data();return{id:d.id,title:x.title||'',artist:x.artist||'',owner_uid:x.owner_uid||'',image:x.image||null,createdAt:x.created_at&&x.created_at.toMillis?x.created_at.toMillis():0}});const remoteIds=new Set(remote.map(x=>x.id));const localById=new Map(songs.map(x=>[String(x.id),x]));const remoteUnique=dedupeSongs(remote);const remoteUniqueIds=new Set(remoteUnique.map(x=>String(x.id)));const duplicateCloudCount=remote.length-remoteUnique.length;songs=remoteUnique.map(x=>({...x,image:x.image||localById.get(x.id)?.image||null}));if(duplicateCloudCount){toast('พบเพลงซ้ำใน Cloud '+duplicateCloudCount+' รายการ · ซ่อนจากคลังชั่วคราว ข้อมูลต้นฉบับยังไม่ถูกลบ');}for(const remoteSong of remote){const local=localById.get(remoteSong.id);if(!remoteSong.image&&local&&local.image&&remoteSong.owner_uid===user.uid){saveCloudSong({...remoteSong,image:local.image});}}for(const local of localById.values()){if(!remoteIds.has(String(local.id))&&!remote.some(x=>songDedupeKey(x)===songDedupeKey(local))){songs.push(local);saveCloudSong(local)}}try{localStorage.setItem('ayo_songs',JSON.stringify(localSongMetadata()))}catch(e){}songs.forEach(song=>{if(song.image)cacheSongImage(song).catch(e=>console.warn('AYO image cache write:',e))});renderSongs();renderSets();},cloudError);
   const setsRef=db.collection('users').doc(user.uid).collection('setlists');stopSets=setsRef.onSnapshot(snap=>{if(activeCloudUid!==user.uid)return;sets=snap.docs.map(d=>({id:d.id,name:d.data().name||'Setlist',ids:Array.isArray(d.data().ids)?d.data().ids:[]}));cloudSetsReady=true;try{localStorage.setItem('ayo_sets',JSON.stringify(sets))}catch(e){}renderSets()},cloudError);
   stopSearch=db.collection('users').doc(user.uid).collection('private').doc('search_history').onSnapshot(doc=>{if(activeCloudUid!==user.uid)return;searchCounts=doc.exists&&doc.data().counts?doc.data().counts:{};cloudSearchReady=true;try{localStorage.setItem('ayo_search_counts',JSON.stringify(searchCounts))}catch(e){}renderFrequentSongs()},cloudError);
  }
@@ -350,10 +493,3 @@ songs=read('ayo_songs',[]);sets=read('ayo_sets',[]);renderSongs();renderSets();h
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./service-worker.js").catch(err => {
-      console.warn("AYO CHORDS offline setup:", err);
-    });
-  });
-}
-</script>
-
-</body></html>
