@@ -10,35 +10,16 @@ AYO CHORDS V7 — FIREBASE AUTH + FIRESTORE CLOUD SYNC
 - รูปคอร์ดจะถูกบีบอัดและเก็บเป็นข้อมูลภาพใน Firestore เพื่อให้ทุกเครื่องที่ล็อกอินเห็นรูปเดียวกัน (ไม่ใช้ Firebase Storage/ไม่ต้องเปิด Blaze)
 - ทุกบัญชีที่เข้าสู่ระบบอ่านคลังเพลงสาธารณะร่วมกันได้
 - เจ้าของเพลงเท่านั้นที่แก้ไขหรือลบเพลงต้นฉบับได้
-- Setlist และประวัติการเปิดเพลงซิงค์แยกตามบัญชี และเก็บเป็นข้อมูลส่วนตัว
+- Setlist เป็นคลังส่วนกลาง: ผู้ใช้ทุกคนที่เข้าสู่ระบบเห็น เพิ่ม แก้ไข และลบ Setlist ร่วมกันได้
+- ประวัติการค้นหายังคงแยกตามบัญชีและเป็นข้อมูลส่วนตัว
 - เก็บข้อมูลในเครื่องไว้ด้วย เพื่อให้ใช้งานต่อได้เมื่อออฟไลน์
 - เปลี่ยน Service Worker cache เป็น v8 เพื่อบังคับโหลดไฟล์ชุดใหม่
 
 ข้อกำหนด Firestore Security Rules:
-ต้อง Publish Rules ที่อนุญาต public_songs และข้อมูลส่วนตัวของ users ตามโครงสร้างนี้ก่อนใช้ Cloud Sync:
-
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-
-    match /users/{userId} {
-      allow read, write: if signedIn() && request.auth.uid == userId;
-      match /{collection}/{docId} {
-        allow read, write: if signedIn() && request.auth.uid == userId;
-      }
-    }
-
-    match /public_songs/{songId} {
-      allow read: if true;
-      allow create: if signedIn() && request.resource.data.owner_uid == request.auth.uid;
-      allow update: if signedIn()
-        && resource.data.owner_uid == request.auth.uid
-        && request.resource.data.owner_uid == resource.data.owner_uid;
-      allow delete: if signedIn() && resource.data.owner_uid == request.auth.uid;
-    }
-  }
-}
+ไฟล์ firestore.rules ใน repository เป็นกฎฉบับเต็มที่เพิ่มคอลเลกชันส่วนกลาง setlists:
+ผู้ใช้ที่เข้าสู่ระบบอ่าน สร้าง แก้ไข และลบ Setlist ส่วนกลางได้ โดยตรวจรูปแบบ name, ids และ updated_at
+ส่วน users/{uid} ยังคงจำกัดเฉพาะบัญชีเจ้าของข้อมูล และเพลงสาธารณะยังคงแก้/ลบได้เฉพาะเจ้าของเพลง
+โปรดตรวจ Rules ก่อน Publish เพราะการตั้งค่านี้เปิดให้ผู้ใช้ที่เข้าสู่ระบบทุกคนแก้และลบ Setlist ร่วมกันได้
 
 ข้อควรทราบ:
 - Firestore ใช้เก็บข้อมูลเพลงรวมถึงรูปคอร์ดที่บีบอัดแล้ว และข้อมูล Setlist/ประวัติ
