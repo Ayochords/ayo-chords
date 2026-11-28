@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function validSharedSetlist(data) {
+      return data.keys().hasOnly(['name', 'ids', 'updated_at'])
+        && data.keys().hasAll(['name', 'ids', 'updated_at'])
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 120
+        && data.ids is list
+        && data.ids.size() <= 1000
+        && data.updated_at is timestamp;
+    }
+
+    match /users/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+
+      match /{collection}/{docId} {
+        allow read, write: if signedIn() && request.auth.uid == userId;
+      }
+    }
+
+    match /public_songs/{songId} {
+      allow read: if true;
+
+      allow create: if signedIn()
+        && request.resource.data.owner_uid == request.auth.uid;
+
+      allow update: if signedIn()
+        && resource.data.owner_uid == request.auth.uid
+        && request.resource.data.owner_uid == resource.data.owner_uid;
+
+      allow delete: if signedIn()
+        && resource.data.owner_uid == request.auth.uid;
+    }
+
+    match /song_contributions/{contributionId} {
+      allow create: if signedIn()
+        && request.resource.data.user_uid == request.auth.uid;
+
+      allow read: if signedIn();
+      allow update, delete: if false;
+    }
+
+    // Shared Setlists: all signed-in AYO CHORDS users may view, edit, or delete.
+    match /setlists/{setlistId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && validSharedSetlist(request.resource.data);
+      allow delete: if signedIn();
+    }
+  }
+}
